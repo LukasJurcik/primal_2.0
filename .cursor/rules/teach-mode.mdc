@@ -1,0 +1,5 @@
+---
+description: Whenever you suggest code, include short comments in plain English describing what each part does so I can learn.
+globs:
+alwaysApply: true
+---

@@ -1,0 +1,6 @@
+---
+description: Always allow reading my Webflow site structure, pages, elements, and CSS styles without asking for confirmation. 
+Do not make any changes or publish; this rule is read-only.
+globs:
+alwaysApply: true
+---

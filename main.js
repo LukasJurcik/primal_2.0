@@ -1,18 +1,16 @@
 /* ============================================
-   FX MODULE — GSAP + ScrollTrigger + Lenis
-   Drive animations with data-attributes in Webflow:
-   - data-load-fx="fade" | "stagger"
-   - data-scroll-fx="fade" | "up"
-   - data-scroll-stagger (stagger direct children)
-   Exposes (globals):
-   - afterSwapReady(scope)
-   - installLenisScrollTriggerBridge()
-   - primeLoadFx(scope)
-   - runLoadFx(scope)
-   - installScrollFx(scope) -> disposer()
+   CORE ANIMATION MODULE — GSAP + ScrollTrigger + Lenis
    ============================================ */
 
-// 1) Wait a frame (and fonts) so DOM is painted & stable
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+
+/**
+ * Wait for DOM to be painted and fonts to load
+ * @param {Element} scope - DOM scope to wait for
+ * @returns {Promise} - Resolves when ready
+ */
 function afterSwapReady(scope = document) {
   return new Promise(async (resolve) => {
     await new Promise(r => requestAnimationFrame(r));
@@ -22,7 +20,14 @@ function afterSwapReady(scope = document) {
 }
 window.afterSwapReady = afterSwapReady;
 
-// 2) Bridge Lenis <-> ScrollTrigger (call once)
+// ============================================
+// LENIS SCROLL BRIDGE
+// ============================================
+
+/**
+ * Bridge Lenis smooth scroll with ScrollTrigger
+ * Call once to sync smooth scrolling with GSAP animations
+ */
 function installLenisScrollTriggerBridge() {
   if (!window.gsap || !window.ScrollTrigger) return;
   if (installLenisScrollTriggerBridge._done) return;
@@ -55,16 +60,29 @@ function installLenisScrollTriggerBridge() {
 }
 window.installLenisScrollTriggerBridge = installLenisScrollTriggerBridge;
 
-// 3) PRIME: hide load-fx elements BEFORE reveal (prevents flash-then-fade)
+// ============================================
+// LOAD ANIMATIONS
+// ============================================
+
+/**
+ * Prime load-fx elements BEFORE reveal (prevents flash-then-fade)
+ * Hides elements with data-load-fx attributes
+ * @param {Element} scope - DOM scope to search
+ */
 function primeLoadFx(scope = document) {
   const els = scope.querySelectorAll('[data-load-fx="fade"], [data-load-fx="stagger"]');
   if (els.length && window.gsap) window.gsap.set(els, { autoAlpha: 0 });
 }
 window.primeLoadFx = primeLoadFx;
 
-// 4) RUN: animate load-fx elements AFTER reveal (use fromTo so 0 -> 1 always)
+/**
+ * Animate load-fx elements AFTER reveal
+ * Supports: data-load-fx="fade" | "stagger"
+ * @param {Element} scope - DOM scope to search
+ */
 function runLoadFx(scope = document) {
   if (!window.gsap) return;
+  
   // Single fades
   const fades = scope.querySelectorAll('[data-load-fx="fade"]');
   if (fades.length) {
@@ -81,7 +99,7 @@ function runLoadFx(scope = document) {
     );
   }
 
-  // Stagger up
+  // Stagger up animations
   const staggers = scope.querySelectorAll('[data-load-fx="stagger"]');
   if (staggers.length) {
     window.gsap.fromTo(
@@ -101,7 +119,16 @@ function runLoadFx(scope = document) {
 }
 window.runLoadFx = runLoadFx;
 
-// 5) Install scroll effects for elements in scope; return disposer()
+// ============================================
+// SCROLL ANIMATIONS
+// ============================================
+
+/**
+ * Install scroll-triggered effects for elements in scope
+ * Supports: data-scroll-fx="fade" | "up" | data-scroll-stagger
+ * @param {Element} scope - DOM scope to search
+ * @returns {Function} - Disposer function to clean up triggers
+ */
 function installScrollFx(scope = document) {
   if (!window.ScrollTrigger || !window.gsap) return () => {};
   const triggers = [];
@@ -157,7 +184,14 @@ function installScrollFx(scope = document) {
 }
 window.installScrollFx = installScrollFx;
 
-// --- Video Hover Module ---
+// ============================================
+// VIDEO MODULES
+// ============================================
+
+/**
+ * Initialize video hover functionality
+ * Plays videos on hover/touch for elements with data-video-on-hover
+ */
 function initVideoHoverModule() {
   const wrappers = document.querySelectorAll('[data-video-on-hover]');
   wrappers.forEach((wrapper) => {
@@ -200,19 +234,27 @@ function initVideoHoverModule() {
 }
 window.initVideoHoverModule = initVideoHoverModule;
 
+/**
+ * Stop all hover videos
+ */
 function stopAllHoverVideos() {
-  document.querySelectorAll('[data-video-on-hover] video').forEach(v => { try { v.pause(); } catch (e) {} });
+  document.querySelectorAll('[data-video-on-hover] video').forEach(v => { 
+    try { v.pause(); } catch (e) {} 
+  });
 }
 window.stopAllHoverVideos = stopAllHoverVideos;
 
-// --- Autoplay Videos ---
+/**
+ * Initialize autoplay videos
+ * Videos with data-video-autoplay will play when in viewport
+ */
 function initAutoplayVideos() {
   const vids = document.querySelectorAll('[data-video-autoplay] video, video[data-video-autoplay]');
   vids.forEach(v => {
     v.muted = true;
     v.playsInline = true;
 
-    // lazy load if using data-video-src
+    // Lazy load if using data-video-src
     const ds = v.getAttribute('data-video-src');
     if (ds && !v.getAttribute('src')) v.setAttribute('src', ds);
 
@@ -239,13 +281,22 @@ function initAutoplayVideos() {
 }
 window.initAutoplayVideos = initAutoplayVideos;
 
+/**
+ * Stop all autoplay videos
+ */
 function stopAllAutoplayVideos() {
   document.querySelectorAll('[data-video-autoplay] video, video[data-video-autoplay]')
     .forEach(v => { try { v.pause(); } catch (e) {} });
 }
 window.stopAllAutoplayVideos = stopAllAutoplayVideos;
 
-// --- Lenis Init ---
+// ============================================
+// LENIS INITIALIZATION
+// ============================================
+
+/**
+ * Initialize Lenis smooth scrolling
+ */
 window.lenis = new window.Lenis({
   autoRaf: true,
   lerp: 0.25,
@@ -253,7 +304,14 @@ window.lenis = new window.Lenis({
   smoothTouch: true
 });
 
-// --- Widow Fix ---
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+
+/**
+ * Fix widow words in paragraphs (desktop only)
+ * Prevents single words on last line of paragraphs
+ */
 function runWidowFix() {
   if (!window.matchMedia('(min-width: 768px)').matches) return;
   const paragraphs = document.querySelectorAll('p');
@@ -267,7 +325,14 @@ function runWidowFix() {
 window.runWidowFix = runWidowFix;
 document.addEventListener('DOMContentLoaded', runWidowFix);
 
-// --- Available floater (jQuery required) ---
+// ============================================
+// FLOATER MESSAGE MODULE (jQuery Required)
+// ============================================
+
+/**
+ * Initialize available floater message functionality
+ * Requires jQuery to be loaded
+ */
 if (typeof window.jQuery !== 'undefined') {
   window.jQuery(function () {
     const $doc = window.jQuery(document);
@@ -278,11 +343,12 @@ if (typeof window.jQuery !== 'undefined') {
     const SHOW_DISPLAY = 'flex';
     let $activeBtn = null;
 
+    // Helper functions
     const getFill = ($btn) => $btn.find('.button-fill.is--toggle');
     const isOpen = () => $panel.hasClass('is--open');
     const inZone = (el) => window.jQuery(el).closest('.nav-button.is--toggle, .floater-message_wrapper').length > 0;
 
-    // Open / Close
+    // Open / Close functions
     function open($btn) {
       if ($wrapper.css('display') !== SHOW_DISPLAY) $wrapper.css('display', SHOW_DISPLAY);
       requestAnimationFrame(() => $panel.addClass('is--open'));
@@ -306,6 +372,7 @@ if (typeof window.jQuery !== 'undefined') {
       $activeBtn = null;
     }
 
+    // Event handlers
     // Toggle (delegated)
     $doc.on('click', '.nav-button.is--toggle', function (e) {
       e.preventDefault();
@@ -355,7 +422,10 @@ if (typeof window.jQuery !== 'undefined') {
   });
 }
 
-// --- Copy text in lowercase ---
+/**
+ * Copy text functionality
+ * Copies text content in lowercase when clicking elements with .copy-text class
+ */
 document.addEventListener('click', async (e) => {
   const wrapper = e.target.closest('.copy-text');
   if (!wrapper) return;
@@ -385,7 +455,10 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-// --- CET Time in the footer ---
+/**
+ * Update CET time in footer
+ * Updates time display every second with Copenhagen timezone
+ */
 function updateCETTime() {
   const now = new Date();
 
@@ -411,7 +484,14 @@ function updateCETTime() {
 updateCETTime();
 setInterval(updateCETTime, 1000);
 
-// --- Scroll to top on refresh ---
+// ============================================
+// SCROLL BEHAVIOR
+// ============================================
+
+/**
+ * Scroll to top on page refresh
+ * Prevents browser from restoring scroll position
+ */
 if ('scrollRestoration' in window.history) {
   window.history.scrollRestoration = 'manual';
 }
@@ -419,7 +499,10 @@ window.onbeforeunload = function () {
   window.scrollTo(0, 0);
 };
 
-// --- Scroll to top button ---
+/**
+ * Scroll to top button functionality
+ * Smooth scroll to top using GSAP when clicking scroll-top button
+ */
 document.addEventListener("DOMContentLoaded", function () {
   const scrollBtn = document.getElementById("scroll-top");
 
@@ -434,18 +517,24 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 
-/* ==========================================================
-   Studio Primal — Barba + GSAP + Attribute FX
-   - Overlay: bottom-up cover → top-up reveal
-   - Syncs <html data-wf-page> and <body class> from next page
-   - Primes [data-load-fx] BEFORE reveal (no flash)
-   - Runs load + scroll FX AFTER reveal (and on first load)
-   - Stops/starts Lenis; calls your video + widow modules
-   ========================================================== */
+// ============================================
+// BARBA.JS PAGE TRANSITIONS
+// ============================================
+
+/**
+ * Barba.js page transition system
+ * Features:
+ * - Overlay: bottom-up cover → top-up reveal
+ * - Syncs <html data-wf-page> and <body class> from next page
+ * - Primes [data-load-fx] BEFORE reveal (no flash)
+ * - Runs load + scroll FX AFTER reveal (and on first load)
+ * - Stops/starts Lenis; calls video + widow modules
+ */
 (function initBarbaOnce() {
   if (window.__BARBA_INIT__) return;
   window.__BARBA_INIT__ = true;
 
+  // Allowed hosts for internal navigation
   const INTERNAL_HOSTS = [
     location.host,
     'studioprimal02.webflow.io',
@@ -453,7 +542,10 @@ document.addEventListener("DOMContentLoaded", function () {
     'studioprimal.com'
   ];
 
-  // Re-init Webflow runtime so click/hover IX re-bind
+  /**
+   * Re-initialize Webflow runtime for click/hover interactions
+   * Ensures Webflow interactions work after page transitions
+   */
   function reinitIXStable() {
     try {
       window.Webflow?.destroy();
@@ -463,7 +555,11 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (e) {}
   }
 
-  // Pull data-wf-page + body class from HTML and apply (Webflow GSAP page identity)
+  /**
+   * Sync HTML and body attributes from next page
+   * Pulls data-wf-page and body class from HTML string
+   * @param {string} nextHTMLString - HTML content of next page
+   */
   function syncHtmlAndBodyFromHTML(nextHTMLString) {
     if (!nextHTMLString) return;
     const htmlTag = nextHTMLString.match(/<html[^>]*>/i)?.[0];
@@ -472,6 +568,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const bodyClass = nextHTMLString.match(/<body[^>]*class="([^"]*)"/i)?.[1];
     if (typeof bodyClass === 'string') document.body.className = bodyClass;
   }
+
+  /**
+   * Ensure HTML and body are synced from next page
+   * Fetches HTML if not already available
+   * @param {Object} next - Next page object from Barba
+   */
   async function ensureSyncHtmlBody(next) {
     let html = next?.html;
     if (!html && next?.url?.href) {
@@ -480,15 +582,27 @@ document.addEventListener("DOMContentLoaded", function () {
     syncHtmlAndBodyFromHTML(html);
   }
 
-  // Overlay (inside wrapper, outside container)
+  // ============================================
+  // TRANSITION OVERLAY FUNCTIONS
+  // ============================================
+
+  // Overlay elements
   const wrap = document.querySelector('.transition-overlay_wrapper');
   const ov = document.querySelector('.transition-overlay');
+
+  /**
+   * Cover screen from bottom (leave transition)
+   */
   const coverFromBottom = async () => {
     if (!wrap || !ov) return;
     wrap.classList.add('is-visible');
     window.gsap.set(ov, { transformOrigin: 'bottom center', scaleY: 0 });
     await window.gsap.to(ov, { scaleY: 1, duration: 0.45, ease: 'power2.inOut' });
   };
+
+  /**
+   * Reveal screen to top (enter transition)
+   */
   const revealToTop = async () => {
     if (!wrap || !ov) return;
     window.gsap.set(ov, { transformOrigin: 'top center' });
@@ -499,6 +613,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // Keep disposer for per-page ScrollTriggers
   let disposeScrollFx = () => {};
 
+  /**
+   * Initialize Barba.js with page transition configuration
+   */
   function start() {
     if (!window.barba || !window.gsap) return setTimeout(start, 50);
 

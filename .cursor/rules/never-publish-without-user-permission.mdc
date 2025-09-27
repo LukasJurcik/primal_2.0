@@ -1,0 +1,5 @@
+---
+description: Never publish or deploy websites via MCP without the user’s explicit permission for that specific action.
+globs:
+alwaysApply: true
+---

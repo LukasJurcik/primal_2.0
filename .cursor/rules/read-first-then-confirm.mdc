@@ -1,0 +1,5 @@
+---
+description: Before writing anything in Webflow (creating components, editing custom code, updating CMS), first list what you plan to change and ask me to confirm: “Proceed? yes/no”.
+globs:
+alwaysApply: true
+---

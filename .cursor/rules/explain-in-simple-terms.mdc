@@ -1,0 +1,5 @@
+---
+description: Always explain each code change or concept in simple, non-developer language. Avoid jargon when possible.
+globs:
+alwaysApply: true
+---

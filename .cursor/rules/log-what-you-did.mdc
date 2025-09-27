@@ -1,0 +1,5 @@
+---
+description: After any approved change, summarize exactly what changed (files, selectors, data-attributes), where it lives in Webflow, and how to test it.
+globs:
+alwaysApply: true
+---

@@ -1,0 +1,5 @@
+---
+description: Use vanilla JS, jQuery, and GSAP/ScrollTrigger only. Do not add npm packages, frameworks, or heavy libraries. Keep scripts lightweight and dependency-free.
+globs:
+alwaysApply: true
+---

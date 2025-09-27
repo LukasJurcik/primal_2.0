@@ -1,0 +1,5 @@
+---
+description: Prefer attribute-based hooks (e.g., data-load-fx, data-scroll-fx) and class toggles over DOM restructures. No layout rewrites.
+globs:
+alwaysApply: true
+---

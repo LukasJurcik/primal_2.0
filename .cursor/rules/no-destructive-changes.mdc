@@ -1,0 +1,5 @@
+---
+description: Do not delete pages, components, CMS collections/items, assets, or classes. Renames count as destructive if they could break bindings. Ask me first.
+globs:
+alwaysApply: true
+---
