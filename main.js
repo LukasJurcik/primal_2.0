@@ -21,6 +21,138 @@ function afterSwapReady(scope = document) {
 window.afterSwapReady = afterSwapReady;
 
 // ============================================
+// TEXT ANIMATION MODULE
+// ============================================
+
+/**
+ * Initialize line reveal text animations
+ * Animates text elements with data-line-reveal="true" attribute
+ * Uses GSAP SplitText for line-by-line reveal animations
+ */
+function initTextAnimations() {
+  if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
+    console.warn('GSAP or SplitText not found - text animations disabled');
+    return;
+  }
+
+  // Process immediately, don't wait for fonts
+  document.querySelectorAll("[data-line-reveal='true']").forEach((text) => {
+    if (text.dataset.textAnimationBound === '1') return;
+    
+    try {
+      SplitText.create(text, {
+        type: "lines",
+        autoSplit: true,
+        mask: "lines",
+        linesClass: "line",
+        onSplit(self) {
+          return gsap.timeline()
+          .from(self.lines, {
+            yPercent: 110,
+            delay: 0.1, 
+            duration: 0.8,
+            stagger: { amount: 0.5 },
+            ease: "power2.out", // Add easing here
+          });
+        },
+      });
+
+      gsap.set(text, { visibility: "visible" });
+      text.dataset.textAnimationBound = '1';
+    } catch (error) {
+      console.warn('Text animation failed for element:', text, error);
+    }
+  });
+}
+window.initTextAnimations = initTextAnimations;
+
+/**
+ * Initialize word reveal text animations
+ * Animates text elements with data-word-reveal="true" attribute
+ * Uses GSAP SplitText for word-by-word reveal animations
+ * Triggers on page load (perfect for hero headlines)
+ */
+function initWordAnimations() {
+  if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
+    console.warn('GSAP or SplitText not found - word animations disabled');
+    return;
+  }
+
+  // Process immediately, don't wait for fonts
+  document.querySelectorAll("[data-word-reveal='true']").forEach((text) => {
+    if (text.dataset.wordAnimationBound === '1') return;
+    
+    try {
+      SplitText.create(text, {
+        type: "words",
+        autoSplit: true,
+        mask: "words",
+        wordsClass: "word",
+        onSplit(self) {
+          return gsap.timeline()
+          .from(self.words, {
+            yPercent: 110,
+            delay: 0.1, 
+            duration: 0.7,
+            stagger: { amount: 0.2 },
+            ease: "cubic-bezier(.55,0,.25,1)",
+          });
+        },
+      });
+
+      gsap.set(text, { visibility: "visible" });
+      text.dataset.wordAnimationBound = '1';
+    } catch (error) {
+      console.warn('Word animation failed for element:', text, error);
+    }
+  });
+}
+window.initWordAnimations = initWordAnimations;
+
+/**
+ * Initialize character reveal text animations
+ * Animates text elements with data-char-reveal="true" attribute
+ * Uses GSAP SplitText for character-by-character reveal animations
+ * Triggers on page load (perfect for hero headlines)
+ */
+function initCharAnimations() {
+  if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
+    console.warn('GSAP or SplitText not found - character animations disabled');
+    return;
+  }
+
+  // Process immediately, don't wait for fonts
+  document.querySelectorAll("[data-char-reveal='true']").forEach((text) => {
+    if (text.dataset.charAnimationBound === '1') return;
+    
+    try {
+      SplitText.create(text, {
+        type: "chars",
+        autoSplit: true,
+        mask: "chars",
+        charsClass: "char",
+        onSplit(self) {
+          return gsap.timeline()
+          .from(self.chars, {
+            yPercent: 110,
+            delay: 0,
+            duration: 0.6,
+            stagger: { amount: 0.5 },
+            ease: "cubic-bezier(.75,.1,.15,1)",
+          });
+        },
+      });
+
+      gsap.set(text, { visibility: "visible" });
+      text.dataset.charAnimationBound = '1';
+    } catch (error) {
+      console.warn('Character animation failed for element:', text, error);
+    }
+  });
+}
+window.initCharAnimations = initCharAnimations;
+
+// ============================================
 // LENIS SCROLL BRIDGE
 // ============================================
 
@@ -554,6 +686,9 @@ document.addEventListener("DOMContentLoaded", function () {
           // Your modules & utilities
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
+          window.initTextAnimations?.();
+          window.initWordAnimations?.();
+          window.initCharAnimations?.();
           window.runWidowFix?.();
 
           try { window.ScrollTrigger.refresh(); } catch (e) {}
@@ -570,6 +705,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
+          window.initTextAnimations?.();
+          window.initWordAnimations?.();
+          window.initCharAnimations?.();
           window.runWidowFix?.();
 
           try { window.ScrollTrigger.refresh(); } catch (e) {}
