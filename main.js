@@ -61,130 +61,6 @@ function installLenisScrollTriggerBridge() {
 window.installLenisScrollTriggerBridge = installLenisScrollTriggerBridge;
 
 // ============================================
-// LOAD ANIMATIONS
-// ============================================
-
-/**
- * Prime load-fx elements BEFORE reveal (prevents flash-then-fade)
- * Hides elements with data-load-fx attributes
- * @param {Element} scope - DOM scope to search
- */
-function primeLoadFx(scope = document) {
-  const els = scope.querySelectorAll('[data-load-fx="fade"], [data-load-fx="stagger"]');
-  if (els.length && window.gsap) window.gsap.set(els, { autoAlpha: 0 });
-}
-window.primeLoadFx = primeLoadFx;
-
-/**
- * Animate load-fx elements AFTER reveal
- * Supports: data-load-fx="fade" | "stagger"
- * @param {Element} scope - DOM scope to search
- */
-function runLoadFx(scope = document) {
-  if (!window.gsap) return;
-  
-  // Single fades
-  const fades = scope.querySelectorAll('[data-load-fx="fade"]');
-  if (fades.length) {
-    window.gsap.fromTo(
-      fades,
-      { autoAlpha: 0 },
-      {
-        autoAlpha: 1,
-        duration: 0.5,
-        ease: 'power2.out',
-        overwrite: 'auto',
-        clearProps: 'visibility,opacity'
-      }
-    );
-  }
-
-  // Stagger up animations
-  const staggers = scope.querySelectorAll('[data-load-fx="stagger"]');
-  if (staggers.length) {
-    window.gsap.fromTo(
-      staggers,
-      { y: 16, autoAlpha: 0 },
-      {
-        y: 0,
-        autoAlpha: 1,
-        duration: 0.6,
-        ease: 'power2.out',
-        stagger: 0.06,
-        overwrite: 'auto',
-        clearProps: 'transform,visibility,opacity'
-      }
-    );
-  }
-}
-window.runLoadFx = runLoadFx;
-
-// ============================================
-// SCROLL ANIMATIONS
-// ============================================
-
-/**
- * Install scroll-triggered effects for elements in scope
- * Supports: data-scroll-fx="fade" | "up" | data-scroll-stagger
- * @param {Element} scope - DOM scope to search
- * @returns {Function} - Disposer function to clean up triggers
- */
-function installScrollFx(scope = document) {
-  if (!window.ScrollTrigger || !window.gsap) return () => {};
-  const triggers = [];
-
-  // Fade when entering viewport
-  scope.querySelectorAll('[data-scroll-fx="fade"]').forEach(el => {
-    triggers.push(
-      window.gsap.from(el, {
-        autoAlpha: 0,
-        duration: 0.6,
-        ease: 'power2.out',
-        scrollTrigger: { trigger: el, start: 'top 80%', once: true }
-      })
-    );
-  });
-
-  // Rise up on enter
-  scope.querySelectorAll('[data-scroll-fx="up"]').forEach(el => {
-    triggers.push(
-      window.gsap.from(el, {
-        y: 24,
-        autoAlpha: 0,
-        duration: 0.7,
-        ease: 'power2.out',
-        scrollTrigger: { trigger: el, start: 'top 85%', once: true }
-      })
-    );
-  });
-
-  // Group stagger (stagger direct children)
-  scope.querySelectorAll('[data-scroll-stagger]').forEach(group => {
-    const items = group.querySelectorAll(':scope > *');
-    triggers.push(
-      window.gsap.from(items, {
-        y: 12,
-        autoAlpha: 0,
-        stagger: 0.08,
-        duration: 0.6,
-        ease: 'power2.out',
-        scrollTrigger: { trigger: group, start: 'top 80%', once: true }
-      })
-    );
-  });
-
-  // Disposer: kill all ScrollTriggers/tweens
-  return () => {
-    triggers.forEach(t => {
-      try { t.scrollTrigger?.kill(); } catch (e) {}
-      try { t.kill?.(); } catch (e) {}
-    });
-    try { window.ScrollTrigger.refresh(); } catch (e) {}
-  };
-}
-window.installScrollFx = installScrollFx;
-
-// ============================================
 // VIDEO MODULES
 // ============================================
 
@@ -610,9 +486,6 @@ document.addEventListener("DOMContentLoaded", function () {
     wrap.classList.remove('is-visible');
   };
 
-  // Keep disposer for per-page ScrollTriggers
-  let disposeScrollFx = () => {};
-
   /**
    * Initialize Barba.js with page transition configuration
    */
@@ -644,7 +517,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
         async leave() {
           window.lenis?.stop();
-          disposeScrollFx?.();                       // kill old ScrollTriggers
           window.stopAllHoverVideos?.();
           window.stopAllAutoplayVideos?.();
           await coverFromBottom();
@@ -661,8 +533,6 @@ document.addEventListener("DOMContentLoaded", function () {
           // Make next container visible under overlay
           if (next?.container && window.gsap) {
             window.gsap.set(next.container, { clearProps: 'opacity,visibility', display: 'block' });
-            // 🔹 PRIME load effects NOW so they’re hidden before reveal
-            primeLoadFx(next.container);
           }
 
           // Let it paint one frame
@@ -678,10 +548,8 @@ document.addEventListener("DOMContentLoaded", function () {
           await afterSwapReady(next?.container);     // (from FX module)
           reinitIXStable();                          // re-bind Webflow click/hover IX
 
-          // Install + run attribute animations
+          // Install bridge
           installLenisScrollTriggerBridge();
-          runLoadFx(next.container);                 // ← fades hero now (no flash)
-          disposeScrollFx = installScrollFx(next.container);
 
           // Your modules & utilities
           window.initVideoHoverModule?.();
@@ -694,15 +562,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
         async once({ next }) {
           await ensureSyncHtmlBody(next);
-          // Prime before first reveal too (prevents first-load flash)
-          if (next?.container) primeLoadFx(next.container);
 
           await afterSwapReady(next?.container);
           reinitIXStable();
 
           installLenisScrollTriggerBridge();
-          runLoadFx(next.container);
-          disposeScrollFx = installScrollFx(next.container);
 
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
