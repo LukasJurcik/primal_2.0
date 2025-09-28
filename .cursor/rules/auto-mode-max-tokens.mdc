@@ -1,0 +1,16 @@
+---
+description: Safe Auto mode with Webflow MCP – reduce hidden token spikes
+globs: 
+alwaysApply: true      
+default_model: auto
+preferred_models:
+  - gpt-4.1
+  - claude-3.5-sonnet
+instructions: |
+  When using the Webflow MCP server:
+    - Retrieve only the minimal number of docs required (≤3).
+    - Summarize long docs to under ~2,000 tokens before reasoning.
+    - Avoid including full documentation unless explicitly requested.
+    - Prefer lighter models (e.g. gpt-4.1) when possible.
+    - Only escalate to Claude-4 Sonnet if absolutely necessary.
+---
