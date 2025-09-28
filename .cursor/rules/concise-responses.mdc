@@ -1,0 +1,5 @@
+---
+description: For simple queries and routine tasks, provide concise responses. Avoid over-explaining obvious solutions. Use bullet points and short sentences when possible.
+globs:
+alwaysApply: true
+---

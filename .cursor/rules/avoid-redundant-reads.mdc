@@ -1,0 +1,5 @@
+---
+description: Before reading files, check if they've been read recently in the conversation. Avoid re-reading the same files multiple times unless content has changed.
+globs:
+alwaysApply: true
+---

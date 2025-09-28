@@ -1,0 +1,5 @@
+---
+description: For routine tasks (like adding comments, fixing typos, simple edits), use concise explanations. Focus on the change made rather than detailed explanations unless the user specifically asks for more detail.
+globs:
+alwaysApply: true
+---

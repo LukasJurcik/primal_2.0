@@ -1,0 +1,5 @@
+---
+description: When possible, batch multiple related operations into single tool calls rather than making separate requests. This reduces token overhead and improves efficiency.
+globs:
+alwaysApply: true
+---
