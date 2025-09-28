@@ -92,7 +92,7 @@ function initWordAnimations() {
           return gsap.timeline()
           .from(self.words, {
             yPercent: 110,
-            delay: 0.1, 
+            delay: 0, 
             duration: 0.7,
             stagger: { amount: 0.2 },
             ease: "cubic-bezier(.55,0,.25,1)",
@@ -594,27 +594,198 @@ document.addEventListener("DOMContentLoaded", function () {
   // TRANSITION OVERLAY FUNCTIONS
   // ============================================
 
+  // Transition state management
+  let isTransitioning = false;
+  let pendingNavigation = null;
+
+  // Easing configuration - change these to update all animations
+  const COVER_EASE = 'power4.inOut';  // Easing for exit/cover animations
+  const REVEAL_EASE = 'power4.Out';   // Easing for enter/reveal animations
+
   // Overlay elements
   const wrap = document.querySelector('.transition-overlay_wrapper');
   const ov = document.querySelector('.transition-overlay');
 
   /**
-   * Cover screen from bottom (leave transition)
+   * Trigger a same-page transition for visual consistency
+   * Runs the exit animation then immediately the enter animation
    */
-  const coverFromBottom = async () => {
+  async function triggerSamePageTransition() {
+    if (isTransitioning) return;
+    
+    isTransitioning = true;
+    const container = document.querySelector('[data-barba="container"]');
+    
+    try {
+      // Stop Lenis and disable scroll during transition
+      window.lenis?.stop();
+      document.body.style.overflow = 'hidden';
+      
+      // Run exit animation
+      await coverFromBottom(container);
+      
+      // Scroll to top while overlay is covering
+      window.scrollTo(0, 0);
+      
+      // Small delay to feel natural
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Run enter animation
+      await revealToTop(container);
+      
+      // Re-enable scroll and restart Lenis
+      document.body.style.overflow = '';
+      window.lenis?.start();
+      
+    } catch (error) {
+      console.warn('Same-page transition failed:', error);
+      // Ensure scroll is re-enabled even if error occurs
+      document.body.style.overflow = '';
+      window.lenis?.start();
+    } finally {
+      isTransitioning = false;
+    }
+  }
+
+  /**
+   * Cover screen from bottom (leave transition)
+   * Also animates current Barba container out with fade and upward movement
+   */
+  const coverFromBottom = async (currentContainer = null) => {
     if (!wrap || !ov) return;
+    
+    // Use passed container or find current Barba container
+    const container = currentContainer || document.querySelector('[data-barba="container"]');
+    
     wrap.classList.add('is-visible');
-    window.gsap.set(ov, { transformOrigin: 'bottom center', scaleY: 0 });
-    await window.gsap.to(ov, { scaleY: 1, duration: 0.45, ease: 'power2.inOut' });
+    
+    // Set initial state - start with 0 scale, grow from bottom
+    window.gsap.set(ov, { 
+      scaleY: 0,
+      transformOrigin: 'bottom center' // Scale grows from bottom up
+    });
+    
+    // Create timeline for synchronized animations
+    const tl = window.gsap.timeline();
+    
+    // ===== OVERLAY ANIMATION DISABLED =====
+    // Overlay disabled - testing opacity only
+    // tl.to(ov, { 
+    //   scaleY: 1, 
+    //   duration: 0.7,
+    //   ease: 'power4.inOut'
+    // }, 0);
+    // ===== OVERLAY ANIMATION DISABLED =====
+    
+    // Animate current container out (blur + move up + scale down) if it exists
+    if (container) {
+      // Set transform origin to top center for scaling
+      window.gsap.set(container, { transformOrigin: 'top center' });
+      
+      // Disable pointer events during transition
+      container.style.pointerEvents = 'none';
+      
+      // Separate animations for different easing and timing
+      tl.to(container, { 
+        opacity: 0, // Fade out
+        duration: 0.6, 
+        ease: COVER_EASE 
+      }, 0)
+      .to(container, { 
+        filter: 'blur(10px)', // Add blur effect
+        duration: 0.4, 
+        ease: COVER_EASE 
+      }, 0) // Slight delay for blur
+      .to(container, { 
+        scale: 0.98, // Scale down slightly
+        duration: 0.6, 
+        ease: COVER_EASE 
+      }, 0)
+      .to(container, { 
+        y: '-2rem', 
+        duration: 0.6, 
+        ease: COVER_EASE 
+      }, 0);
+    }
+    
+    await tl;
   };
 
   /**
    * Reveal screen to top (enter transition)
+   * Also animates new Barba container in with fade and downward movement
    */
-  const revealToTop = async () => {
+  const revealToTop = async (nextContainer = null) => {
     if (!wrap || !ov) return;
+    
+    // Use passed container or find new Barba container
+    const container = nextContainer || document.querySelector('[data-barba="container"]');
+    
+    // Set initial state for new container (invisible, blurred, positioned, and scaled)
+    if (container) {
+      // Remove flicker prevention and set up for animation
+      container.style.visibility = 'visible';
+      
+      // Disable pointer events initially
+      container.style.pointerEvents = 'none';
+      
+      window.gsap.set(container, { 
+        opacity: 0, // Start invisible
+        y: '-2rem', // Start from same position where old container ended
+        filter: 'blur(10px)', // Start with blur
+        scale: 0.98, // Start scaled down
+        transformOrigin: 'top center' // Scale from top
+      });
+    }
+    
+    // Set transform origin for reveal (scale shrinks from top down)
     window.gsap.set(ov, { transformOrigin: 'top center' });
-    await window.gsap.to(ov, { scaleY: 0, duration: 0.5, ease: 'power2.inOut' });
+    
+    // Create timeline for synchronized animations
+    const tl = window.gsap.timeline();
+    
+    // ===== OVERLAY ANIMATION DISABLED =====
+    // Overlay disabled - testing opacity only
+    // tl.to(ov, { 
+    //   scaleY: 0, 
+    //   duration: 0.7,
+    //   ease: 'power4.inOut'
+    // }, 0);
+    // ===== OVERLAY ANIMATION DISABLED =====
+    
+    // Animate new container in (unblur + scale up + move to position) if it exists
+    if (container) {
+      // Separate animations for different easing and timing
+      tl.to(container, { 
+        opacity: 1, // Fade in
+        duration: 0.6, 
+        ease: REVEAL_EASE 
+      }, 0)
+      .to(container, { 
+        filter: 'blur(0px)', // Remove blur as it fades in
+        duration: 0.4, 
+        ease: REVEAL_EASE 
+      }, 0.1) // Blur clears after opacity starts
+      .to(container, { 
+        scale: 1, // Scale up to normal size
+        duration: 0.6, 
+        ease: REVEAL_EASE 
+      }, 0)
+      .to(container, { 
+        y: '0rem', 
+        duration: 0.6, 
+        ease: REVEAL_EASE 
+      }, 0); 
+      
+      // Re-enable pointer events after animation completes
+      tl.call(() => {
+        if (container) {
+          container.style.pointerEvents = '';
+        }
+      });
+    }
+    
+    await tl;
     wrap.classList.remove('is-visible');
   };
 
@@ -629,6 +800,46 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     try { window.barba.destroy(); } catch (e) {}
+
+    // Intercept clicks during transitions and handle same-page clicks
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a[href]');
+      if (!link) return;
+      
+      const href = link.getAttribute('href') || '';
+      const isHash = href.startsWith('#') || href.includes('#');
+      const isDownload = link.hasAttribute('download');
+      const isPrevent = link.hasAttribute('data-barba-prevent');
+      const isExternal = link.getAttribute('target') === '_blank';
+      
+      // Skip non-navigational links
+      if (isHash || isDownload || isPrevent || isExternal) return;
+      
+      // Check if clicking on same page
+      const currentPath = window.location.pathname;
+      const linkPath = new URL(link.href, window.location.origin).pathname;
+      const isSamePage = currentPath === linkPath;
+      
+      // Handle transitions in progress
+      if (isTransitioning) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Store the pending navigation (even if same page)
+        pendingNavigation = link.href;
+        console.log('Navigation queued:', pendingNavigation);
+        return;
+      }
+      
+      // Handle same-page clicks - trigger transition anyway
+      if (isSamePage) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Trigger a fake transition for visual consistency
+        triggerSamePageTransition();
+      }
+    }, true); // Use capture phase to intercept early
 
     window.barba.init({
       links: 'a[href]:not([target="_blank"])',
@@ -647,11 +858,20 @@ document.addEventListener("DOMContentLoaded", function () {
       transitions: [{
         name: 'overlay-swap-clean',
 
-        async leave() {
+        async leave({ current }) {
+          // Mark transition as active
+          isTransitioning = true;
+          
+          // Stop scroll and disable user scroll during transition
           window.lenis?.stop();
+          document.body.style.overflow = 'hidden';
+          
           window.stopAllHoverVideos?.();
           window.stopAllAutoplayVideos?.();
-          await coverFromBottom();
+          await coverFromBottom(current?.container);
+          
+          // Overlay is now fully covering - wait here for content to load
+          // This happens automatically as Barba fetches the next page
         },
 
         async afterLeave({ current }) {
@@ -667,17 +887,38 @@ document.addEventListener("DOMContentLoaded", function () {
             window.gsap.set(next.container, { clearProps: 'opacity,visibility', display: 'block' });
           }
 
+          // Wait for content to be fully ready (images, fonts, etc.)
+          await afterSwapReady(next?.container);
+          
           // Let it paint one frame
           await new Promise(r => requestAnimationFrame(r));
         },
 
-        async enter() {
+        async enter({ next }) {
           window.scrollTo(0, 0);
-          await revealToTop();                       // overlay off → ready to animate
+          
+          // Now that content is loaded, reveal with animation
+          await revealToTop(next?.container);        // overlay off → ready to animate
+          
+          // Re-enable scroll after transition completes
+          document.body.style.overflow = '';
+          
+          // Mark transition as complete
+          isTransitioning = false;
+          
+          // Handle any pending navigation through Barba
+          if (pendingNavigation) {
+            const pending = pendingNavigation;
+            pendingNavigation = null;
+            setTimeout(() => {
+              // Use Barba's navigation to maintain transitions
+              window.barba.go(pending);
+            }, 100); // Small delay to ensure current transition is fully complete
+          }
         },
 
         async after({ next }) {
-          await afterSwapReady(next?.container);     // (from FX module)
+          // Content is already ready from beforeEnter
           reinitIXStable();                          // re-bind Webflow click/hover IX
 
           // Install bridge
@@ -692,7 +933,19 @@ document.addEventListener("DOMContentLoaded", function () {
           window.runWidowFix?.();
 
           try { window.ScrollTrigger.refresh(); } catch (e) {}
+          
+          // Ensure scroll is re-enabled and Lenis is started
+          document.body.style.overflow = '';
           window.lenis?.start();
+          
+          // Ensure pointer events are re-enabled on container (fallback)
+          const container = next?.container || document.querySelector('[data-barba="container"]');
+          if (container) {
+            container.style.pointerEvents = '';
+          }
+          
+          // Ensure transition state is reset
+          isTransitioning = false;
         },
 
         async once({ next }) {
@@ -702,6 +955,23 @@ document.addEventListener("DOMContentLoaded", function () {
           reinitIXStable();
 
           installLenisScrollTriggerBridge();
+
+          // Mark GSAP as found for flicker prevention CSS
+          if (window.gsap) {
+            document.documentElement.classList.remove('gsap-not-found');
+            
+            // Ensure initial page content is visible (fallback)
+            const initialContainer = document.querySelector('[data-barba="container"][data-prevent-flicker="true"]');
+            if (initialContainer) {
+              window.gsap.set(initialContainer, {
+                opacity: 1,
+                y: '0rem',
+                filter: 'blur(0px)',
+                scale: 1,
+                visibility: 'visible'
+              });
+            }
+          }
 
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
@@ -718,6 +988,26 @@ document.addEventListener("DOMContentLoaded", function () {
     try { window.barba.prefetch.init(); } catch (e) {}
     // Optionally, log version
     // console.log('[Barba] init', window.barba.version);
+  }
+
+  // Mark GSAP as found for flicker prevention CSS and handle initial page load
+  if (window.gsap) {
+    document.documentElement.classList.remove('gsap-not-found');
+    
+    // Show content on initial page load (no transition needed)
+    const initialContainer = document.querySelector('[data-barba="container"][data-prevent-flicker="true"]');
+    if (initialContainer) {
+      // Set up initial page without transition
+      window.gsap.set(initialContainer, {
+        opacity: 1,
+        y: '0rem',
+        filter: 'blur(0px)',
+        scale: 1,
+        visibility: 'visible'
+      });
+    }
+  } else {
+    document.documentElement.classList.add('gsap-not-found');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
