@@ -353,132 +353,6 @@ function runWidowFix() {
 window.runWidowFix = runWidowFix;
 document.addEventListener('DOMContentLoaded', runWidowFix);
 
-// ============================================
-// FLOATER MESSAGE MODULE
-// ============================================
-
-/**
- * Initialize available floater message functionality
- * Handles toggle button interactions for floating message panels
- */
-(function initFloaterMessage() {
-  const wrapper = document.querySelector('.floater-message_wrapper');
-  const panel = document.querySelector('.floater-message_available');
-  
-  if (!wrapper || !panel) return;
-
-  const SHOW_DISPLAY = 'flex';
-  let activeBtn = null;
-
-  // Helper functions
-  const getFill = (btn) => btn.querySelector('.button-fill.is--toggle');
-  const isOpen = () => panel.classList.contains('is--open');
-  const inZone = (el) => el && el.closest('.nav-button.is--toggle, .floater-message_wrapper');
-
-  // Open / Close functions
-  function open(btn) {
-    if (getComputedStyle(wrapper).display !== SHOW_DISPLAY) {
-      wrapper.style.display = SHOW_DISPLAY;
-    }
-    requestAnimationFrame(() => panel.classList.add('is--open'));
-    activeBtn = btn;
-    const fill = getFill(btn);
-    if (fill) {
-      fill.classList.add('is--open');
-      fill.classList.remove('is--hover');
-    }
-  }
-
-  function close() {
-    if (!isOpen()) return;
-    panel.classList.remove('is--open');
-
-    panel.addEventListener('transitionend', function handleTransition(e) {
-      if (e.target !== panel) return;
-      if (!isOpen()) wrapper.style.display = 'none';
-      panel.removeEventListener('transitionend', handleTransition);
-    });
-
-    // Fallback if no transition
-    setTimeout(() => { if (!isOpen()) wrapper.style.display = 'none'; }, 500);
-
-    document.querySelectorAll('.button-fill.is--toggle').forEach(fill => {
-      fill.classList.remove('is--open', 'is--hover');
-    });
-    activeBtn = null;
-  }
-
-  // Event handlers
-  // Toggle (delegated)
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('.nav-button.is--toggle');
-    if (!btn) return;
-    
-    e.preventDefault();
-    if (activeBtn && btn === activeBtn) {
-      close();
-    } else {
-      if (activeBtn) close();
-      open(btn);
-    }
-  });
-
-  // Hover (only when nothing active)
-  document.addEventListener('mouseenter', (e) => {
-    if (!e.target || typeof e.target.closest !== 'function') return;
-    
-    const btn = e.target.closest('.nav-button.is--toggle');
-    if (!btn || activeBtn) return;
-    
-    const fill = getFill(btn);
-    if (fill) fill.classList.add('is--hover');
-  }, true);
-
-  document.addEventListener('mouseleave', (e) => {
-    if (!e.target || typeof e.target.closest !== 'function') return;
-    
-    const btn = e.target.closest('.nav-button.is--toggle');
-    if (!btn || activeBtn) return;
-    
-    const fill = getFill(btn);
-    if (fill) fill.classList.remove('is--hover');
-  }, true);
-
-  // // Leave zone → close
-  // document.addEventListener('mouseleave', (e) => {
-  //   if (!e.target || typeof e.target.closest !== 'function') return;
-    
-  //   const target = e.target.closest('.nav-button.is--toggle, .floater-message_wrapper');
-  //   if (!target) return;
-    
-  //   if (activeBtn && !inZone(e.relatedTarget)) close();
-  // }, true);
-
-  // Click outside → close
-  document.addEventListener('click', (e) => {
-    if (activeBtn && !inZone(e.target)) close();
-  });
-
-  // Click wrapper background (not the panel) → close
-  wrapper.addEventListener('click', (e) => {
-    if (e.target.closest('.floater-message_available')) return;
-    if (activeBtn) close();
-  });
-
-  // Esc → close
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && activeBtn) close();
-  });
-
-  // Close button → close
-  const closeButton = document.querySelector('.floater-message_close');
-  if (closeButton) {
-    closeButton.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (activeBtn) close();
-    });
-  }
-})();
 
 /**
  * Copy text functionality
@@ -981,6 +855,7 @@ function start() {
           window.initTextAnimations?.();
           window.initWordAnimations?.();
           window.initCharAnimations?.();
+          window.initMessageToggle?.();
           window.runWidowFix?.();
 
           try { window.ScrollTrigger.refresh(); } catch (e) {}
@@ -1064,3 +939,189 @@ function start() {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 })();
+
+/**
+ * Initialize message toggle functionality
+ * Handles the toggle behavior for the message button and related elements
+ */
+function initMessageToggle() {
+  // Ensure Webflow is available
+  if (!window.Webflow) {
+    console.warn('Webflow not found - waiting...');
+    setTimeout(initMessageToggle, 100);
+    return;
+  }
+
+  console.log('🔘 Initializing message toggle...');
+  console.log('Webflow found:', !!window.Webflow);
+  
+  const toggleButton = document.querySelector('.nav-button.is--toggle');
+  console.log('Toggle button found:', toggleButton);
+  
+  const overlayWrapper = document.querySelector('.message-overlay_wrapper');
+  console.log('Overlay wrapper found:', overlayWrapper);
+  
+  const messageBlur = document.querySelector('.floater-message_blur');
+  console.log('Message blur found:', messageBlur);
+  
+  const messageAvailable = document.querySelector('.floater-message_available');
+  console.log('Message available found:', messageAvailable);
+
+  const closeButton = document.querySelector('.floater-message_close');
+  console.log('Close button found:', closeButton);
+
+  if (!toggleButton || !overlayWrapper || !messageBlur || !messageAvailable || !closeButton) {
+    console.warn('Message toggle: Required elements not found');
+    return;
+  }
+
+  // Remove any existing click listeners
+  toggleButton.removeEventListener('click', toggleButton.toggleHandler);
+  
+  // Get the button fill element
+  const buttonFill = toggleButton.querySelector('.button-fill.is--toggle');
+  
+  // Add hover listeners
+  toggleButton.addEventListener('mouseenter', () => {
+    if (buttonFill) buttonFill.classList.add('is--active');
+  });
+  
+  toggleButton.addEventListener('mouseleave', () => {
+    if (buttonFill && !toggleButton.classList.contains('is--active')) {
+      buttonFill.classList.remove('is--active');
+    }
+  });
+
+  // Function to manage scroll locking
+  const manageScroll = (disable) => {
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    
+    if (disable) {
+      // Store current scroll position
+      const scrollY = window.scrollY;
+      
+      // Apply styles to html instead of body to maintain blur effect
+      document.documentElement.style.position = 'fixed';
+      document.documentElement.style.width = '100%';
+      document.documentElement.style.top = `-${scrollY}px`;
+      document.documentElement.style.paddingRight = `${scrollbarWidth}px`; // Prevent layout shift
+      document.documentElement.dataset.scrollPosition = scrollY;
+    } else {
+      // Restore scroll position
+      const scrollY = document.documentElement.dataset.scrollPosition;
+      document.documentElement.style.position = '';
+      document.documentElement.style.width = '';
+      document.documentElement.style.top = '';
+      document.documentElement.style.paddingRight = '';
+      window.scrollTo(0, parseInt(scrollY || '0'));
+      delete document.documentElement.dataset.scrollPosition;
+    }
+  };
+
+  // Create the click handler
+  toggleButton.toggleHandler = () => {
+    console.log('Toggle button clicked!');
+    
+    // Toggle button state
+    toggleButton.classList.toggle('is--active');
+    
+    // Update button fill state
+    if (buttonFill) {
+      if (toggleButton.classList.contains('is--active')) {
+        buttonFill.classList.add('is--active');
+      } else {
+        buttonFill.classList.remove('is--active');
+      }
+    }
+    
+    // First make wrapper visible if needed
+    if (!overlayWrapper.classList.contains('is--visible')) {
+      overlayWrapper.style.display = 'block';
+      // Force a reflow to ensure display:block is applied
+      overlayWrapper.offsetHeight;
+    }
+    
+    // Toggle classes for transitions
+    overlayWrapper.classList.toggle('is--visible');
+    
+    // Manage scroll locking
+    manageScroll(toggleButton.classList.contains('is--active'));
+    
+    if (toggleButton.classList.contains('is--active')) {
+      // Opening - add classes immediately
+      messageBlur.classList.add('is--open');
+      messageAvailable.classList.add('is--open');
+    } else {
+      // Closing - delay blur removal, remove available immediately
+      messageAvailable.classList.remove('is--open');
+      setTimeout(() => {
+        if (!toggleButton.classList.contains('is--active')) {
+          messageBlur.classList.remove('is--open');
+        }
+      }, 200);
+      
+      // Hide wrapper after all transitions
+      setTimeout(() => {
+        if (!toggleButton.classList.contains('is--active')) {
+          overlayWrapper.style.display = 'none';
+        }
+      }, 400); // Wait for both transitions to complete afte closing
+    }
+  };
+
+  // Add the click listeners
+  toggleButton.addEventListener('click', toggleButton.toggleHandler);
+  
+  // Remove any existing click listeners from the document
+  document.removeEventListener('click', document.messageClickHandler);
+  
+  // Create a new click handler for the document
+  document.messageClickHandler = (e) => {
+    // Only handle clicks when the message is open
+    if (!toggleButton.classList.contains('is--active')) return;
+
+    // Get the clicked element and check its classes
+    const target = e.target;
+    const clickedElement = target.closest('.floater-message_close, .floater-message_blur, .nav-button.is--toggle, .floater-message_available');
+    
+    if (!clickedElement) {
+      // Click was outside all relevant elements - close the message
+      toggleButton.click();
+      return;
+    }
+
+    // Handle clicks based on the element that was clicked
+    if (clickedElement.classList.contains('floater-message_close')) {
+      // Close button was clicked
+      e.preventDefault();
+      e.stopPropagation();
+      toggleButton.click();
+    } else if (clickedElement.classList.contains('floater-message_blur')) {
+      // Blur background was clicked
+      toggleButton.click();
+    } else if (clickedElement.classList.contains('floater-message_available')) {
+      // Click was inside the message - do nothing
+      return;
+    }
+  };
+
+  // Add the click handler to the document
+  document.addEventListener('click', document.messageClickHandler);
+}
+
+// Initialize message toggle
+window.initMessageToggle = initMessageToggle;
+
+// Add to Webflow ready event
+window.Webflow?.push(function() {
+  console.log('🌊 Webflow ready - initializing message toggle...');
+  initMessageToggle();
+});
+
+// Add to Barba.js after hook to handle page transitions
+if (window.barba) {
+  window.barba.hooks.after(() => {
+    console.log('🔄 Barba.js transition complete - reinitializing message toggle...');
+    window.initMessageToggle?.();
+  });
+}
