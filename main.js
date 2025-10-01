@@ -30,6 +30,7 @@ window.afterSwapReady = afterSwapReady;
  * Uses GSAP SplitText for line-by-line reveal animations
  */
 function initTextAnimations() {
+  console.log('🎭 Initializing line reveal animations...');
   if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
     console.warn('GSAP or SplitText not found - text animations disabled');
     return;
@@ -73,6 +74,7 @@ window.initTextAnimations = initTextAnimations;
  * Triggers on page load (perfect for hero headlines)
  */
 function initWordAnimations() {
+  console.log('📝 Initializing word reveal animations...');
   if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
     console.warn('GSAP or SplitText not found - word animations disabled');
     return;
@@ -116,6 +118,7 @@ window.initWordAnimations = initWordAnimations;
  * Triggers on page load (perfect for hero headlines)
  */
 function initCharAnimations() {
+  console.log('✨ Initializing character reveal animations...');
   if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
     console.warn('GSAP or SplitText not found - character animations disabled');
     return;
@@ -201,6 +204,7 @@ window.installLenisScrollTriggerBridge = installLenisScrollTriggerBridge;
  * Plays videos on hover/touch for elements with data-video-on-hover
  */
 function initVideoHoverModule() {
+  console.log('🎥 Initializing video hover functionality...');
   const wrappers = document.querySelectorAll('[data-video-on-hover]');
   wrappers.forEach((wrapper) => {
     if (wrapper.dataset.videoHoverBound === '1') return;
@@ -257,6 +261,7 @@ window.stopAllHoverVideos = stopAllHoverVideos;
  * Videos with data-video-autoplay will play when in viewport
  */
 function initAutoplayVideos() {
+  console.log('▶️ Initializing autoplay videos...');
   const vids = document.querySelectorAll('[data-video-autoplay] video, video[data-video-autoplay]');
   vids.forEach(v => {
     v.muted = true;
@@ -312,6 +317,21 @@ window.lenis = new window.Lenis({
   smoothTouch: true
 });
 
+// Configure ScrollTrigger default configuration for Webflow interactions
+if (window.ScrollTrigger) {
+  ScrollTrigger.defaults({
+    scroller: document.body,
+    preventOverlaps: true
+  });
+}
+
+// Helper function to refresh ScrollTrigger when needed
+function refreshScrollTrigger() {
+  if (window.ScrollTrigger) {
+    ScrollTrigger.refresh();
+  }
+}
+
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
@@ -334,101 +354,131 @@ window.runWidowFix = runWidowFix;
 document.addEventListener('DOMContentLoaded', runWidowFix);
 
 // ============================================
-// FLOATER MESSAGE MODULE (jQuery Required)
+// FLOATER MESSAGE MODULE
 // ============================================
 
 /**
  * Initialize available floater message functionality
- * Requires jQuery to be loaded
+ * Handles toggle button interactions for floating message panels
  */
-if (typeof window.jQuery !== 'undefined') {
-  window.jQuery(function () {
-    const $doc = window.jQuery(document);
-    const $win = window.jQuery(window);
-    const $wrapper = window.jQuery('.floater-message_wrapper');
-    const $panel = window.jQuery('.floater-message_available');
+(function initFloaterMessage() {
+  const wrapper = document.querySelector('.floater-message_wrapper');
+  const panel = document.querySelector('.floater-message_available');
+  
+  if (!wrapper || !panel) return;
 
-    const SHOW_DISPLAY = 'flex';
-    let $activeBtn = null;
+  const SHOW_DISPLAY = 'flex';
+  let activeBtn = null;
 
-    // Helper functions
-    const getFill = ($btn) => $btn.find('.button-fill.is--toggle');
-    const isOpen = () => $panel.hasClass('is--open');
-    const inZone = (el) => window.jQuery(el).closest('.nav-button.is--toggle, .floater-message_wrapper').length > 0;
+  // Helper functions
+  const getFill = (btn) => btn.querySelector('.button-fill.is--toggle');
+  const isOpen = () => panel.classList.contains('is--open');
+  const inZone = (el) => el && el.closest('.nav-button.is--toggle, .floater-message_wrapper');
 
-    // Open / Close functions
-    function open($btn) {
-      if ($wrapper.css('display') !== SHOW_DISPLAY) $wrapper.css('display', SHOW_DISPLAY);
-      requestAnimationFrame(() => $panel.addClass('is--open'));
-      $activeBtn = $btn;
-      getFill($btn).addClass('is--open').removeClass('is--hover');
+  // Open / Close functions
+  function open(btn) {
+    if (getComputedStyle(wrapper).display !== SHOW_DISPLAY) {
+      wrapper.style.display = SHOW_DISPLAY;
     }
-
-    function close() {
-      if (!isOpen()) return;
-      $panel.removeClass('is--open');
-
-      $panel.one('transitionend', function (e) {
-        if (e.target !== this) return;
-        if (!isOpen()) $wrapper.css('display', 'none');
-      });
-
-      // Fallback if no transition
-      setTimeout(() => { if (!isOpen()) $wrapper.css('display', 'none'); }, 500);
-
-      window.jQuery('.button-fill.is--toggle').removeClass('is--open is--hover');
-      $activeBtn = null;
+    requestAnimationFrame(() => panel.classList.add('is--open'));
+    activeBtn = btn;
+    const fill = getFill(btn);
+    if (fill) {
+      fill.classList.add('is--open');
+      fill.classList.remove('is--hover');
     }
+  }
 
-    // Event handlers
-    // Toggle (delegated)
-    $doc.on('click', '.nav-button.is--toggle', function (e) {
-      e.preventDefault();
-      const $btn = window.jQuery(this);
-      if ($activeBtn && $btn.is($activeBtn)) {
-        close();
-      } else {
-        if ($activeBtn) close();
-        open($btn);
-      }
+  function close() {
+    if (!isOpen()) return;
+    panel.classList.remove('is--open');
+
+    panel.addEventListener('transitionend', function handleTransition(e) {
+      if (e.target !== panel) return;
+      if (!isOpen()) wrapper.style.display = 'none';
+      panel.removeEventListener('transitionend', handleTransition);
     });
 
-    // Hover (only when nothing active)
-    $doc.on('mouseenter', '.nav-button.is--toggle', function () {
-      if ($activeBtn) return;
-      getFill(window.jQuery(this)).addClass('is--hover');
-    }).on('mouseleave', '.nav-button.is--toggle', function () {
-      if ($activeBtn) return;
-      getFill(window.jQuery(this)).removeClass('is--hover');
-    });
+    // Fallback if no transition
+    setTimeout(() => { if (!isOpen()) wrapper.style.display = 'none'; }, 500);
 
-    // Leave zone → close
-    $doc.on('mouseleave', '.nav-button.is--toggle, .floater-message_wrapper', function (e) {
-      if ($activeBtn && !inZone(e.relatedTarget)) close();
+    document.querySelectorAll('.button-fill.is--toggle').forEach(fill => {
+      fill.classList.remove('is--open', 'is--hover');
     });
+    activeBtn = null;
+  }
 
-    // Click outside → close
-    $doc.on('click', function (e) {
-      if ($activeBtn && !inZone(e.target)) close();
-    });
-
-    // Click wrapper background (not the panel) → close
-    $wrapper.on('click', function (e) {
-      if (window.jQuery(e.target).closest('.floater-message_available').length) return;
-      if ($activeBtn) close();
-    });
-
-    // Esc → close
-    $doc.on('keydown', function (e) {
-      if (e.key === 'Escape' && $activeBtn) close();
-    });
-
-    // SCROLL → close (any page scroll while open)
-    $win.on('scroll', function () {
-      if ($activeBtn) close();
-    });
+  // Event handlers
+  // Toggle (delegated)
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.nav-button.is--toggle');
+    if (!btn) return;
+    
+    e.preventDefault();
+    if (activeBtn && btn === activeBtn) {
+      close();
+    } else {
+      if (activeBtn) close();
+      open(btn);
+    }
   });
-}
+
+  // Hover (only when nothing active)
+  document.addEventListener('mouseenter', (e) => {
+    if (!e.target || typeof e.target.closest !== 'function') return;
+    
+    const btn = e.target.closest('.nav-button.is--toggle');
+    if (!btn || activeBtn) return;
+    
+    const fill = getFill(btn);
+    if (fill) fill.classList.add('is--hover');
+  }, true);
+
+  document.addEventListener('mouseleave', (e) => {
+    if (!e.target || typeof e.target.closest !== 'function') return;
+    
+    const btn = e.target.closest('.nav-button.is--toggle');
+    if (!btn || activeBtn) return;
+    
+    const fill = getFill(btn);
+    if (fill) fill.classList.remove('is--hover');
+  }, true);
+
+  // // Leave zone → close
+  // document.addEventListener('mouseleave', (e) => {
+  //   if (!e.target || typeof e.target.closest !== 'function') return;
+    
+  //   const target = e.target.closest('.nav-button.is--toggle, .floater-message_wrapper');
+  //   if (!target) return;
+    
+  //   if (activeBtn && !inZone(e.relatedTarget)) close();
+  // }, true);
+
+  // Click outside → close
+  document.addEventListener('click', (e) => {
+    if (activeBtn && !inZone(e.target)) close();
+  });
+
+  // Click wrapper background (not the panel) → close
+  wrapper.addEventListener('click', (e) => {
+    if (e.target.closest('.floater-message_available')) return;
+    if (activeBtn) close();
+  });
+
+  // Esc → close
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && activeBtn) close();
+  });
+
+  // Close button → close
+  const closeButton = document.querySelector('.floater-message_close');
+  if (closeButton) {
+    closeButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (activeBtn) close();
+    });
+  }
+})();
 
 /**
  * Copy text functionality
@@ -600,7 +650,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Easing configuration - change these to update all animations
   const COVER_EASE = 'power4.inOut';  // Easing for exit/cover animations
-  const REVEAL_EASE = 'power4.Out';   // Easing for enter/reveal animations
+  const REVEAL_EASE = 'Expo.Out';   // Easing for enter/reveal animations
 
   // Overlay elements
   const wrap = document.querySelector('.transition-overlay_wrapper');
@@ -697,7 +747,7 @@ document.addEventListener("DOMContentLoaded", function () {
         ease: COVER_EASE 
       }, 0) // Slight delay for blur
       .to(container, { 
-        scale: 0.98, // Scale down slightly
+        scale: 0.95, // Scale down slightly
         duration: 0.6, 
         ease: COVER_EASE 
       }, 0)
@@ -733,7 +783,7 @@ document.addEventListener("DOMContentLoaded", function () {
         opacity: 0, // Start invisible
         y: '-2rem', // Start from same position where old container ended
         filter: 'blur(10px)', // Start with blur
-        scale: 0.98, // Start scaled down
+        scale: 0.95, // Start scaled down
         transformOrigin: 'top center' // Scale from top
       });
     }
@@ -792,8 +842,9 @@ document.addEventListener("DOMContentLoaded", function () {
   /**
    * Initialize Barba.js with page transition configuration
    */
-  function start() {
-    if (!window.barba || !window.gsap) return setTimeout(start, 50);
+function start() {
+  console.log('🚀 Initializing Barba.js page transitions...');
+  if (!window.barba || !window.gsap) return setTimeout(start, 50);
 
     window.addEventListener('pageshow', (e) => {
       if (e.persisted) { try { window.barba.destroy(); } catch (e) {} start(); }
