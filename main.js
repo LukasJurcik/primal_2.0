@@ -992,29 +992,18 @@ function initMessageToggle() {
     }
   });
 
-  // Function to manage scroll locking
+  // Function to manage scroll locking - Pure CSS approach via class + Lenis control
   const manageScroll = (disable) => {
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    
     if (disable) {
-      // Store current scroll position
-      const scrollY = window.scrollY;
-      
-      // Apply styles to html instead of body to maintain blur effect
-      document.documentElement.style.position = 'fixed';
-      document.documentElement.style.width = '100%';
-      document.documentElement.style.top = `-${scrollY}px`;
-      document.documentElement.style.paddingRight = `${scrollbarWidth}px`; // Prevent layout shift
-      document.documentElement.dataset.scrollPosition = scrollY;
+      // Stop Lenis smooth scroll
+      window.lenis?.stop();
+      // Add class to html element for CSS-based scroll lock
+      document.documentElement.classList.add('message-overlay-active');
     } else {
-      // Restore scroll position
-      const scrollY = document.documentElement.dataset.scrollPosition;
-      document.documentElement.style.position = '';
-      document.documentElement.style.width = '';
-      document.documentElement.style.top = '';
-      document.documentElement.style.paddingRight = '';
-      window.scrollTo(0, parseInt(scrollY || '0'));
-      delete document.documentElement.dataset.scrollPosition;
+      // Remove class from html element
+      document.documentElement.classList.remove('message-overlay-active');
+      // Restart Lenis smooth scroll
+      window.lenis?.start();
     }
   };
 
@@ -1044,7 +1033,7 @@ function initMessageToggle() {
     // Toggle classes for transitions
     overlayWrapper.classList.toggle('is--visible');
     
-    // Manage scroll locking
+    // Manage scroll locking - simple and immediate
     manageScroll(toggleButton.classList.contains('is--active'));
     
     if (toggleButton.classList.contains('is--active')) {
