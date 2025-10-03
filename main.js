@@ -1047,14 +1047,14 @@ function initMessageToggle() {
         if (!toggleButton.classList.contains('is--active')) {
           messageBlur.classList.remove('is--open');
         }
-      }, 200);
+      }, 400);
       
       // Hide wrapper after all transitions
       setTimeout(() => {
         if (!toggleButton.classList.contains('is--active')) {
           overlayWrapper.style.display = 'none';
         }
-      }, 400); // Wait for both transitions to complete afte closing
+      }, 600); // Wait for both transitions to complete afte closing
     }
   };
 
