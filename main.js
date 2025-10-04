@@ -449,6 +449,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 
+
 // ============================================
 // BARBA.JS PAGE TRANSITIONS
 // ============================================
@@ -476,7 +477,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
   /**
    * Re-initialize Webflow runtime for click/hover interactions
-   * Ensures Webflow interactions work after page transitions
    */
   function reinitIXStable() {
     try {
@@ -484,7 +484,9 @@ document.addEventListener("DOMContentLoaded", function () {
       window.Webflow?.ready?.();
       window.Webflow?.require?.('ix2').init();
       setTimeout(() => { try { window.Webflow?.require('ix2').init(); } catch (e) {} }, 0);
-    } catch (e) {}
+    } catch (e) {
+      console.error('Webflow reinit error:', e);
+    }
   }
 
   /**
@@ -521,14 +523,12 @@ document.addEventListener("DOMContentLoaded", function () {
   // Transition state management
   let isTransitioning = false;
   let pendingNavigation = null;
+  let barbaInitialized = false;
+  let startCalled = false; // Prevent multiple start() calls
 
   // Easing configuration - change these to update all animations
   const COVER_EASE = 'power4.inOut';  // Easing for exit/cover animations
   const REVEAL_EASE = 'Expo.Out';   // Easing for enter/reveal animations
-
-  // Overlay elements
-  const wrap = document.querySelector('.transition-overlay_wrapper');
-  const ov = document.querySelector('.transition-overlay');
 
   /**
    * Trigger a same-page transition for visual consistency
@@ -573,33 +573,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   /**
    * Cover screen from bottom (leave transition)
-   * Also animates current Barba container out with fade and upward movement
+   * Animates current Barba container out with fade and upward movement
    */
   const coverFromBottom = async (currentContainer = null) => {
-    if (!wrap || !ov) return;
-    
-    // Use passed container or find current Barba container
     const container = currentContainer || document.querySelector('[data-barba="container"]');
+    if (!container) return;
     
-    wrap.classList.add('is-visible');
-    
-    // Set initial state - start with 0 scale, grow from bottom
-    window.gsap.set(ov, { 
-      scaleY: 0,
-      transformOrigin: 'bottom center' // Scale grows from bottom up
-    });
-    
-    // Create timeline for synchronized animations
     const tl = window.gsap.timeline();
-    
-    // ===== OVERLAY ANIMATION DISABLED =====
-    // Overlay disabled - testing opacity only
-    // tl.to(ov, { 
-    //   scaleY: 1, 
-    //   duration: 0.7,
-    //   ease: 'power4.inOut'
-    // }, 0);
-    // ===== OVERLAY ANIMATION DISABLED =====
     
     // Animate current container out (blur + move up + scale down) if it exists
     if (container) {
@@ -637,166 +617,165 @@ document.addEventListener("DOMContentLoaded", function () {
 
   /**
    * Reveal screen to top (enter transition)
-   * Also animates new Barba container in with fade and downward movement
+   * Animates new Barba container in with fade and downward movement
    */
   const revealToTop = async (nextContainer = null) => {
-    if (!wrap || !ov) return;
-    
-    // Use passed container or find new Barba container
     const container = nextContainer || document.querySelector('[data-barba="container"]');
+    if (!container) return;
     
-    // Set initial state for new container (invisible, blurred, positioned, and scaled)
-    if (container) {
-      // Remove flicker prevention and set up for animation
-      container.style.visibility = 'visible';
-      
-      // Disable pointer events initially
-      container.style.pointerEvents = 'none';
-      
-      window.gsap.set(container, { 
-        opacity: 0, // Start invisible
-        y: '-2rem', // Start from same position where old container ended
-        filter: 'blur(10px)', // Start with blur
-        scale: 0.95, // Start scaled down
-        transformOrigin: 'top center' // Scale from top
-      });
-    }
+    // Set initial state for new container
+    window.gsap.set(container, { 
+      visibility: 'visible',
+      opacity: 0,
+      y: '-2rem',
+      filter: 'blur(10px)',
+      scale: 0.95,
+      transformOrigin: 'top center'
+    });
     
-    // Set transform origin for reveal (scale shrinks from top down)
-    window.gsap.set(ov, { transformOrigin: 'top center' });
+    container.style.pointerEvents = 'none';
     
     // Create timeline for synchronized animations
     const tl = window.gsap.timeline();
     
-    // ===== OVERLAY ANIMATION DISABLED =====
-    // Overlay disabled - testing opacity only
-    // tl.to(ov, { 
-    //   scaleY: 0, 
-    //   duration: 0.7,
-    //   ease: 'power4.inOut'
-    // }, 0);
-    // ===== OVERLAY ANIMATION DISABLED =====
-    
-    // Animate new container in (unblur + scale up + move to position) if it exists
-    if (container) {
-      // Separate animations for different easing and timing
-      tl.to(container, { 
-        opacity: 1, // Fade in
-        duration: 0.6, 
-        ease: REVEAL_EASE 
-      }, 0)
-      .to(container, { 
-        filter: 'blur(0px)', // Remove blur as it fades in
-        duration: 0.4, 
-        ease: REVEAL_EASE 
-      }, 0.1) // Blur clears after opacity starts
-      .to(container, { 
-        scale: 1, // Scale up to normal size
-        duration: 0.6, 
-        ease: REVEAL_EASE 
-      }, 0)
-      .to(container, { 
-        y: '0rem', 
-        duration: 0.6, 
-        ease: REVEAL_EASE 
-      }, 0); 
-      
-      // Re-enable pointer events after animation completes
-      tl.call(() => {
-        if (container) {
-          container.style.pointerEvents = '';
-        }
-      });
-    }
+    // Animate new container in
+    tl.to(container, { 
+      opacity: 1,
+      duration: 0.6, 
+      ease: REVEAL_EASE
+    }, 0)
+    .to(container, { 
+      filter: 'blur(0px)',
+      duration: 0.4, 
+      ease: REVEAL_EASE 
+    }, 0.1)
+    .to(container, { 
+      scale: 1,
+      duration: 0.6, 
+      ease: REVEAL_EASE 
+    }, 0)
+    .to(container, { 
+      y: '0rem', 
+      duration: 0.6, 
+      ease: REVEAL_EASE 
+    }, 0)
+    .call(() => {
+      container.style.pointerEvents = '';
+    });
     
     await tl;
-    wrap.classList.remove('is-visible');
   };
+
+  /**
+   * Reset transition state and ensure clean initialization
+   */
+  function resetTransitionState() {
+    isTransitioning = false;
+    pendingNavigation = null;
+    
+    // Ensure scroll is enabled
+    document.body.style.overflow = '';
+    window.lenis?.start();
+    
+    // Ensure pointer events are enabled on container
+    const container = document.querySelector('[data-barba="container"]');
+    if (container) {
+      container.style.pointerEvents = '';
+    }
+  }
 
   /**
    * Initialize Barba.js with page transition configuration
    */
 function start() {
-  console.log('🚀 Initializing Barba.js page transitions...');
+  if (startCalled) return;
   if (!window.barba || !window.gsap) return setTimeout(start, 50);
+  
+  startCalled = true;
+  console.log('🚀 Initializing Barba.js page transitions...');
 
+    // Reset state before initializing
+    resetTransitionState();
+
+    // Prevent reinitialization on page restore from cache
     window.addEventListener('pageshow', (e) => {
-      if (e.persisted) { try { window.barba.destroy(); } catch (e) {} start(); }
+      if (e.persisted) {
+        console.log('📄 Page restored from cache');
+      }
     });
 
     try { window.barba.destroy(); } catch (e) {}
-
-    // Intercept clicks during transitions and handle same-page clicks
+    
+    // Manually intercept clicks and trigger Barba
+    // Prevents clicks during transitions to avoid interruption
     document.addEventListener('click', (e) => {
       const link = e.target.closest('a[href]');
       if (!link) return;
       
       const href = link.getAttribute('href') || '';
-      const isHash = href.startsWith('#') || href.includes('#');
-      const isDownload = link.hasAttribute('download');
-      const isPrevent = link.hasAttribute('data-barba-prevent');
-      const isExternal = link.getAttribute('target') === '_blank';
       
-      // Skip non-navigational links
-      if (isHash || isDownload || isPrevent || isExternal) return;
-      
-      // Check if clicking on same page
-      const currentPath = window.location.pathname;
-      const linkPath = new URL(link.href, window.location.origin).pathname;
-      const isSamePage = currentPath === linkPath;
-      
-      // Handle transitions in progress
-      if (isTransitioning) {
+      // Only handle internal page links
+      if (href.startsWith('/') && !href.startsWith('/#')) {
         e.preventDefault();
         e.stopPropagation();
         
-        // Store the pending navigation (even if same page)
-        pendingNavigation = link.href;
-        console.log('Navigation queued:', pendingNavigation);
-        return;
-      }
-      
-      // Handle same-page clicks - trigger transition anyway
-      if (isSamePage) {
-        e.preventDefault();
-        e.stopPropagation();
+        // If transition is in progress, queue the navigation
+        if (isTransitioning) {
+          pendingNavigation = link.href;
+          console.log('⏸️ Transition in progress - navigation queued');
+          return;
+        }
         
-        // Trigger a fake transition for visual consistency
-        triggerSamePageTransition();
+        if (window.barba && window.barba.go) {
+          window.barba.go(link.href);
+        } else {
+          window.location.href = link.href;
+        }
       }
-    }, true); // Use capture phase to intercept early
+    }, true);
 
     window.barba.init({
       links: 'a[href]:not([target="_blank"])',
       prevent: ({ el }) => {
-        if (!el || !el.href) return false;
+        if (!el || !el.href) return true;
+        
         const href = el.getAttribute('href') || '';
         const isHash = href.startsWith('#') || href.includes('#');
         const isDownload = el.hasAttribute('download');
         const isPrevent = el.hasAttribute('data-barba-prevent');
         const isRelative = href.startsWith('/');
+        
         let isAllowedHost = false;
-        if (!isRelative) { try { isAllowedHost = INTERNAL_HOSTS.includes(new URL(el.href).host); } catch (e) {} }
+        if (!isRelative) { 
+          try { 
+            isAllowedHost = INTERNAL_HOSTS.includes(new URL(el.href).host); 
+          } catch (e) {}
+        }
+        
         return (!isRelative && !isAllowedHost) || isHash || isDownload || isPrevent;
       },
+      
+      requestError: (trigger, action, url, response) => { 
+        console.error('❌ Barba request error:', url);
+        barbaInitialized = true; 
+      },
+      
+      debug: false,
+      preventRunning: true,
+      timeout: 10000,
 
       transitions: [{
         name: 'overlay-swap-clean',
 
         async leave({ current }) {
-          // Mark transition as active
           isTransitioning = true;
-          
-          // Stop scroll and disable user scroll during transition
           window.lenis?.stop();
           document.body.style.overflow = 'hidden';
-          
+          window.closeMessageOverlay?.(); // Close message overlay on navigation
           window.stopAllHoverVideos?.();
           window.stopAllAutoplayVideos?.();
+          window.cleanupPageLibraries?.(); // Clean up page-specific libraries
           await coverFromBottom(current?.container);
-          
-          // Overlay is now fully covering - wait here for content to load
-          // This happens automatically as Barba fetches the next page
         },
 
         async afterLeave({ current }) {
@@ -804,52 +783,36 @@ function start() {
         },
 
         async beforeEnter({ next }) {
-          // Update Webflow "page identity"
           await ensureSyncHtmlBody(next);
-
-          // Make next container visible under overlay
+          
           if (next?.container && window.gsap) {
             window.gsap.set(next.container, { clearProps: 'opacity,visibility', display: 'block' });
           }
 
-          // Wait for content to be fully ready (images, fonts, etc.)
           await afterSwapReady(next?.container);
-          
-          // Let it paint one frame
           await new Promise(r => requestAnimationFrame(r));
         },
 
         async enter({ next }) {
           window.scrollTo(0, 0);
+          await revealToTop(next?.container);
           
-          // Now that content is loaded, reveal with animation
-          await revealToTop(next?.container);        // overlay off → ready to animate
-          
-          // Re-enable scroll after transition completes
           document.body.style.overflow = '';
-          
-          // Mark transition as complete
           isTransitioning = false;
           
-          // Handle any pending navigation through Barba
+          // Handle any pending navigation
           if (pendingNavigation) {
             const pending = pendingNavigation;
             pendingNavigation = null;
-            setTimeout(() => {
-              // Use Barba's navigation to maintain transitions
-              window.barba.go(pending);
-            }, 100); // Small delay to ensure current transition is fully complete
+            console.log('▶️ Executing queued navigation:', pending);
+            setTimeout(() => window.barba.go(pending), 100);
           }
         },
 
         async after({ next }) {
-          // Content is already ready from beforeEnter
-          reinitIXStable();                          // re-bind Webflow click/hover IX
-
-          // Install bridge
+          reinitIXStable();
           installLenisScrollTriggerBridge();
 
-          // Your modules & utilities
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
           window.initTextAnimations?.();
@@ -857,44 +820,53 @@ function start() {
           window.initCharAnimations?.();
           window.initMessageToggle?.();
           window.runWidowFix?.();
+          window.reinitializePageLibraries?.(); // Reinitialize page-specific libraries
+          
+          // Simple script reinitialization - the standard Barba.js approach
+          await window.reinitializeScripts?.();
 
           try { window.ScrollTrigger.refresh(); } catch (e) {}
           
-          // Ensure scroll is re-enabled and Lenis is started
+          // Ensure everything is re-enabled (failsafe)
           document.body.style.overflow = '';
+          document.body.style.pointerEvents = '';
           window.lenis?.start();
           
-          // Ensure pointer events are re-enabled on container (fallback)
           const container = next?.container || document.querySelector('[data-barba="container"]');
-          if (container) {
-            container.style.pointerEvents = '';
-          }
+          if (container) container.style.pointerEvents = '';
           
-          // Ensure transition state is reset
           isTransitioning = false;
+          barbaInitialized = true;
         },
 
         async once({ next }) {
           await ensureSyncHtmlBody(next);
-
           await afterSwapReady(next?.container);
           reinitIXStable();
-
           installLenisScrollTriggerBridge();
 
-          // Mark GSAP as found for flicker prevention CSS
+          // Reveal content with failsafe
           if (window.gsap) {
             document.documentElement.classList.remove('gsap-not-found');
             
-            // Ensure initial page content is visible (fallback)
-            const initialContainer = document.querySelector('[data-barba="container"][data-prevent-flicker="true"]');
-            if (initialContainer) {
-              window.gsap.set(initialContainer, {
-                opacity: 1,
-                y: '0rem',
-                filter: 'blur(0px)',
-                scale: 1,
-                visibility: 'visible'
+            try {
+              const initialContainer = document.querySelector('[data-barba="container"][data-prevent-flicker="true"]');
+              if (initialContainer) {
+                window.gsap.set(initialContainer, {
+                  opacity: 1,
+                  y: '0rem',
+                  filter: 'blur(0px)',
+                  scale: 1,
+                  visibility: 'visible'
+                });
+              }
+            } catch (error) {
+              console.error('❌ GSAP reveal failed in once hook, showing content anyway:', error);
+              // Fallback: show content immediately
+              const containers = document.querySelectorAll('[data-prevent-flicker="true"]');
+              containers.forEach(c => {
+                c.style.visibility = 'visible';
+                c.style.opacity = '1';
               });
             }
           }
@@ -905,35 +877,72 @@ function start() {
           window.initWordAnimations?.();
           window.initCharAnimations?.();
           window.runWidowFix?.();
+          window.initializePageLibraries?.(); // Initialize page-specific libraries on first load
 
           try { window.ScrollTrigger.refresh(); } catch (e) {}
+          
+          resetTransitionState();
+          barbaInitialized = true;
         }
       }]
     });
 
+    barbaInitialized = true;
+    
     try { window.barba.prefetch.init(); } catch (e) {}
-    // Optionally, log version
-    // console.log('[Barba] init', window.barba.version);
   }
+
+  // ============================================
+  // FAILSAFE: Ensure content always shows
+  // ============================================
+  
+  /**
+   * Emergency failsafe: Show content after timeout regardless of GSAP/Barba status
+   * This prevents content from staying hidden if scripts fail to load
+   */
+  setTimeout(() => {
+    const hiddenContainers = document.querySelectorAll('[data-prevent-flicker="true"]');
+    hiddenContainers.forEach(container => {
+      if (window.getComputedStyle(container).visibility === 'hidden') {
+        console.warn('⚠️ Failsafe triggered: Forcing content visibility');
+        container.style.visibility = 'visible';
+        container.style.opacity = '1';
+      }
+    });
+  }, 3000); // 3 second failsafe timeout
 
   // Mark GSAP as found for flicker prevention CSS and handle initial page load
   if (window.gsap) {
     document.documentElement.classList.remove('gsap-not-found');
     
-    // Show content on initial page load (no transition needed)
-    const initialContainer = document.querySelector('[data-barba="container"][data-prevent-flicker="true"]');
-    if (initialContainer) {
-      // Set up initial page without transition
-      window.gsap.set(initialContainer, {
-        opacity: 1,
-        y: '0rem',
-        filter: 'blur(0px)',
-        scale: 1,
-        visibility: 'visible'
+    try {
+      // Show content on initial page load (no transition needed)
+      const initialContainer = document.querySelector('[data-barba="container"][data-prevent-flicker="true"]');
+      if (initialContainer) {
+        // Set up initial page without transition
+        window.gsap.set(initialContainer, {
+          opacity: 1,
+          y: '0rem',
+          filter: 'blur(0px)',
+          scale: 1,
+          visibility: 'visible'
+        });
+      }
+      
+      // Ensure initial state is set
+      resetTransitionState();
+    } catch (error) {
+      console.error('❌ GSAP reveal failed, showing content anyway:', error);
+      // Fallback: show content immediately
+      const containers = document.querySelectorAll('[data-prevent-flicker="true"]');
+      containers.forEach(c => {
+        c.style.visibility = 'visible';
+        c.style.opacity = '1';
       });
     }
   } else {
     document.documentElement.classList.add('gsap-not-found');
+    console.warn('⚠️ GSAP not found - content will show via CSS fallback');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
@@ -1098,8 +1107,19 @@ function initMessageToggle() {
   document.addEventListener('click', document.messageClickHandler);
 }
 
+/**
+ * Close message overlay if open
+ */
+function closeMessageOverlay() {
+  const toggleButton = document.querySelector('.nav-button.is--toggle');
+  if (toggleButton?.classList.contains('is--active')) {
+    toggleButton.click();
+  }
+}
+
 // Initialize message toggle
 window.initMessageToggle = initMessageToggle;
+window.closeMessageOverlay = closeMessageOverlay;
 
 // Add to Webflow ready event
 window.Webflow?.push(function() {
@@ -1107,10 +1127,4 @@ window.Webflow?.push(function() {
   initMessageToggle();
 });
 
-// Add to Barba.js after hook to handle page transitions
-if (window.barba) {
-  window.barba.hooks.after(() => {
-    console.log('🔄 Barba.js transition complete - reinitializing message toggle...');
-    window.initMessageToggle?.();
-  });
-}
+// Script reinitialization is now handled in the main transition's after hook
