@@ -285,7 +285,7 @@ function initAutoplayVideos() {
           if (e.isIntersecting) tryPlay();
           else { try { v.pause(); } catch (e) {} }
         });
-      }, { threshold: 0.25 });
+      }, { threshold: 0.1 });
       io.observe(v);
     } else {
       tryPlay();
@@ -302,6 +302,126 @@ function stopAllAutoplayVideos() {
     .forEach(v => { try { v.pause(); } catch (e) {} });
 }
 window.stopAllAutoplayVideos = stopAllAutoplayVideos;
+
+/**
+ * Preload video on scroll videos during page transition
+ * Prevents flash when navigating to pages with videos in view
+ */
+function preloadVideoOnScroll() {
+  const wrappers = document.querySelectorAll('[data-video-on-scroll]');
+  wrappers.forEach(wrapper => {
+    const video = wrapper.querySelector('.video-scroll__video') || wrapper.querySelector('video');
+    if (!video) return;
+
+    // Set video properties
+    video.muted = true;
+    video.playsInline = true;
+
+    // Preload immediately during transition
+    const src = video.getAttribute('data-video-src');
+    if (src && !video.src) {
+      video.src = src;
+      video.load();
+    }
+  });
+}
+window.preloadVideoOnScroll = preloadVideoOnScroll;
+
+/**
+ * Initialize video on scroll functionality
+ * Videos with data-video-on-scroll will play when in viewport and pause when out
+ */
+function initVideoOnScrollModule() {
+  console.log('📹 Initializing video on scroll functionality...');
+  const wrappers = document.querySelectorAll('[data-video-on-scroll]');
+
+  // Helper: check if element is visible in viewport
+  const inViewport = (el) => {
+    const r = el.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    const vw = window.innerWidth || document.documentElement.clientWidth;
+    return r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw;
+  };
+
+  // Helper: play video safely
+  const playVideo = (wrapper, video) => {
+    if (video.readyState >= 3) {
+      video.play().then(() => wrapper.dataset.state = 'active')
+        .catch(err => console.warn('Video play blocked:', err));
+    } else {
+      const onCanPlay = () => {
+        video.removeEventListener('canplay', onCanPlay);
+        video.play().then(() => wrapper.dataset.state = 'active')
+          .catch(err => console.warn('Video play blocked:', err));
+      };
+      video.addEventListener('canplay', onCanPlay, { once: true });
+    }
+  };
+
+  // Helper: pause video
+  const pauseVideo = (wrapper, video) => {
+    video.pause();
+    wrapper.dataset.state = 'inactive';
+  };
+
+  wrappers.forEach(wrapper => {
+    if (wrapper.dataset.videoScrollBound === '1') return;
+
+    const video = wrapper.querySelector('.video-scroll__video') || wrapper.querySelector('video');
+    if (!video) return;
+
+    // Play/pause observer
+    const playIO = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          playVideo(wrapper, video);
+        } else {
+          pauseVideo(wrapper, video);
+        }
+      });
+    }, { threshold: 0 });
+
+    // Start observing
+    playIO.observe(wrapper);
+
+    // Handle videos visible on first load
+    if (inViewport(wrapper)) {
+      playVideo(wrapper, video);
+    }
+
+    wrapper.dataset.videoScrollBound = '1';
+  });
+
+  // Handle tab visibility changes
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      // Pause all when tab hidden
+      wrappers.forEach(wrapper => {
+        const video = wrapper.querySelector('.video-scroll__video') || wrapper.querySelector('video');
+        if (video) video.pause();
+      });
+    } else {
+      // Resume any video that is in viewport
+      wrappers.forEach(wrapper => {
+        const video = wrapper.querySelector('.video-scroll__video') || wrapper.querySelector('video');
+        if (video && inViewport(wrapper)) {
+          playVideo(wrapper, video);
+        }
+      });
+    }
+  });
+}
+window.initVideoOnScrollModule = initVideoOnScrollModule;
+
+/**
+ * Stop all video on scroll videos
+ */
+function stopAllVideoOnScroll() {
+  document.querySelectorAll('[data-video-on-scroll] video').forEach(v => { 
+    try { v.pause(); } catch (e) {} 
+  });
+}
+window.stopAllVideoOnScroll = stopAllVideoOnScroll;
 
 // ============================================
 // LENIS INITIALIZATION
@@ -561,7 +681,21 @@ function executeCustomScripts(action = 'init', htmlString = null) {
       if (scriptContent.trim()) {
         // Create a new script element to execute in global scope
         const newScript = document.createElement('script');
-        newScript.textContent = scriptContent;
+        
+        // Wrap script content to handle missing destroy methods
+        const wrappedScript = `
+          try {
+            ${scriptContent}
+          } catch (error) {
+            if (error.message && error.message.includes('destroy is not a function')) {
+              console.warn('Destroy method not available - skipping cleanup');
+            } else {
+              throw error;
+            }
+          }
+        `;
+        
+        newScript.textContent = wrappedScript;
         document.head.appendChild(newScript);
         document.head.removeChild(newScript);
       }
@@ -990,6 +1124,7 @@ function start() {
           window.closeMessageOverlay?.(); // Close message overlay on navigation
           window.stopAllHoverVideos?.();
           window.stopAllAutoplayVideos?.();
+          window.stopAllVideoOnScroll?.();
           window.cleanupPageLibraries?.(); // Clean up page-specific libraries
           
           await coverFromBottom(current?.container);
@@ -1012,6 +1147,9 @@ function start() {
 
           await afterSwapReady(next?.container);
           await new Promise(r => requestAnimationFrame(r));
+          
+          // Preload videos during transition to prevent flash
+          window.preloadVideoOnScroll?.();
           
           // Load scripts and CSS BEFORE transition starts to prevent layout shift
           try {
@@ -1052,6 +1190,7 @@ function start() {
 
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
+          window.initVideoOnScrollModule?.();
           window.initTextAnimations?.();
           window.initWordAnimations?.();
           window.initCharAnimations?.();
@@ -1079,6 +1218,10 @@ function start() {
         async once({ next }) {
           await ensureSyncHtmlBody(next);
           await afterSwapReady(next?.container);
+          
+          // Preload videos on initial page load
+          window.preloadVideoOnScroll?.();
+          
           reinitIXStable();
           installLenisScrollTriggerBridge();
 
@@ -1110,6 +1253,7 @@ function start() {
 
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
+          window.initVideoOnScrollModule?.();
           window.initTextAnimations?.();
           window.initWordAnimations?.();
           window.initCharAnimations?.();
@@ -1361,6 +1505,9 @@ window.closeMessageOverlay = closeMessageOverlay;
 // Add to Webflow ready event
 window.Webflow?.push(function() {
   initMessageToggle();
+  
+  // Preload videos on page load/refresh
+  window.preloadVideoOnScroll?.();
   
   // Initialize scripts and CSS for the current page on load/refresh
   setTimeout(async () => {
