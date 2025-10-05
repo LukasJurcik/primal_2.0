@@ -30,7 +30,7 @@ window.afterSwapReady = afterSwapReady;
  * Uses GSAP SplitText for line-by-line reveal animations
  */
 function initTextAnimations() {
-  console.log('🎭 Initializing line reveal animations...');
+  // Initialize line reveal animations
   if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
     console.warn('GSAP or SplitText not found - text animations disabled');
     return;
@@ -74,7 +74,7 @@ window.initTextAnimations = initTextAnimations;
  * Triggers on page load (perfect for hero headlines)
  */
 function initWordAnimations() {
-  console.log('📝 Initializing word reveal animations...');
+  // Initialize word reveal animations
   if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
     console.warn('GSAP or SplitText not found - word animations disabled');
     return;
@@ -118,7 +118,7 @@ window.initWordAnimations = initWordAnimations;
  * Triggers on page load (perfect for hero headlines)
  */
 function initCharAnimations() {
-  console.log('✨ Initializing character reveal animations...');
+  // Initialize character reveal animations
   if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
     console.warn('GSAP or SplitText not found - character animations disabled');
     return;
@@ -451,7 +451,222 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 // ============================================
+// DYNAMIC SCRIPT & CSS LOADING SYSTEM
+// ============================================
+// 
+// This system allows pages to dynamically load external libraries and execute 
+// custom scripts during Barba.js transitions. Use these data attributes:
+//
+// - data-barba-load: Load external Libraries CDN's or CSS dynamically
+// - data-barba-init: Execute script on page enter
+// - data-barba-destroy: Execute cleanup script on page leave (optional)
+// - data-barba-css: Inject custom CSS styles
+//
+// ============================================
+
+/**
+ * Load external script dynamically
+ */
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    // Check if script is already loaded
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      console.error(`Failed to load script: ${src}`);
+      reject();
+    };
+    document.head.appendChild(script);
+  });
+}
+
+/**
+ * Load external CSS dynamically
+ */
+function loadCSS(href) {
+  return new Promise((resolve, reject) => {
+    // Check if CSS is already loaded
+    if (document.querySelector(`link[href="${href}"]`)) {
+      resolve();
+      return;
+    }
+
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.onload = () => resolve();
+    link.onerror = () => {
+      console.error(`Failed to load CSS: ${href}`);
+      reject();
+    };
+    document.head.appendChild(link);
+  });
+}
+
+/**
+ * Load scripts and CSS from HTML content
+ */
+async function loadAssetsFromHTML(htmlString) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlString, 'text/html');
+  
+  // Load CSS first
+  const cssLinks = doc.querySelectorAll('link[href][data-barba-load]');
+  console.log(`🎨 Loaded ${cssLinks.length} external CSS libraries`);
+  for (const link of cssLinks) {
+    await loadCSS(link.href);
+  }
+  
+  // Then load scripts
+  const scripts = doc.querySelectorAll('script[src][data-barba-load]');
+  console.log(`📦 Loaded ${scripts.length} external libraries`);
+  for (const script of scripts) {
+    await loadScript(script.src);
+  }
+}
+
+/**
+ * Execute custom scripts by data attribute
+ * Looks for scripts with data-barba-init or data-barba-destroy attributes
+ * Can extract scripts from HTML string or current document
+ */
+function executeCustomScripts(action = 'init', htmlString = null) {
+  const attribute = action === 'init' ? 'data-barba-init' : 'data-barba-destroy';
+  let scripts = [];
+  
+  if (htmlString) {
+    // Extract scripts from HTML string (for page transitions)
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlString, 'text/html');
+    scripts = Array.from(doc.querySelectorAll(`script[${attribute}]`));
+  } else {
+    // Use current document (for first page load)
+    scripts = Array.from(document.querySelectorAll(`script[${attribute}]`));
+  }
+  
+  if (action === 'init' && scripts.length > 0) {
+    console.log(`🚀 Executed ${scripts.length} custom scripts`);
+  }
+  
+  scripts.forEach((script) => {
+    try {
+      // Execute the script content
+      const scriptContent = script.textContent || script.innerText;
+      if (scriptContent.trim()) {
+        // Create a new script element to execute in global scope
+        const newScript = document.createElement('script');
+        newScript.textContent = scriptContent;
+        document.head.appendChild(newScript);
+        document.head.removeChild(newScript);
+      }
+    } catch (error) {
+      console.error(`Failed to execute ${action} script:`, error);
+    }
+  });
+}
+
+/**
+ * Extract and inject custom CSS by data attribute
+ * Looks for style tags with data-barba-css attribute
+ * Can extract CSS from HTML string or current document
+ */
+function executeCustomCSS(htmlString = null) {
+  let styles = [];
+  
+  if (htmlString) {
+    // Extract CSS from HTML string (for page transitions)
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlString, 'text/html');
+    styles = Array.from(doc.querySelectorAll('style[data-barba-css]'));
+  } else {
+    // Use current document (for first page load)
+    styles = Array.from(document.querySelectorAll('style[data-barba-css]'));
+  }
+  
+  styles.forEach((style) => {
+    try {
+      // Get the CSS content
+      const cssContent = style.textContent || style.innerText;
+      if (cssContent.trim()) {
+        // Create a new style element and inject it
+        const newStyle = document.createElement('style');
+        newStyle.textContent = cssContent;
+        newStyle.setAttribute('data-barba-injected', 'true');
+        document.head.appendChild(newStyle);
+      }
+    } catch (error) {
+      console.error('Failed to inject CSS style:', error);
+    }
+  });
+}
+
+/**
+ * Remove injected CSS styles
+ * Cleans up CSS that was injected via data-barba-css
+ */
+function removeCustomCSS() {
+  const injectedStyles = document.querySelectorAll('style[data-barba-injected="true"]');
+  
+  injectedStyles.forEach((style) => {
+    try {
+      style.remove();
+    } catch (error) {
+      console.error('Failed to remove CSS style:', error);
+    }
+  });
+}
+
+/**
+ * Initialize custom scripts for the current page
+ */
+function initCustomScripts() {
+  executeCustomScripts('init');
+}
+
+/**
+ * Initialize custom CSS for the current page
+ */
+function initCustomCSS() {
+  executeCustomCSS();
+}
+
+/**
+ * Destroy/cleanup custom scripts for the current page
+ */
+function destroyCustomScripts() {
+  executeCustomScripts('destroy');
+}
+
+/**
+ * Remove custom CSS for the current page
+ */
+function destroyCustomCSS() {
+  removeCustomCSS();
+}
+
+// Make functions globally available
+window.initCustomScripts = initCustomScripts;
+window.destroyCustomScripts = destroyCustomScripts;
+window.executeCustomScripts = executeCustomScripts;
+window.initCustomCSS = initCustomCSS;
+window.destroyCustomCSS = destroyCustomCSS;
+window.executeCustomCSS = executeCustomCSS;
+window.removeCustomCSS = removeCustomCSS;
+
+// ============================================
 // BARBA.JS PAGE TRANSITIONS
+// ============================================
+//
+// Handles smooth page transitions with automatic script/CSS loading.
+// Scripts are loaded BEFORE transitions to prevent layout shift.
+// CSS and scripts are destroyed AFTER transitions complete.
+//
 // ============================================
 
 /**
@@ -692,7 +907,7 @@ function start() {
   if (!window.barba || !window.gsap) return setTimeout(start, 50);
   
   startCalled = true;
-  console.log('🚀 Initializing Barba.js page transitions...');
+  // Initialize Barba.js page transitions
 
     // Reset state before initializing
     resetTransitionState();
@@ -764,6 +979,7 @@ function start() {
       preventRunning: true,
       timeout: 10000,
 
+
       transitions: [{
         name: 'overlay-swap-clean',
 
@@ -775,11 +991,16 @@ function start() {
           window.stopAllHoverVideos?.();
           window.stopAllAutoplayVideos?.();
           window.cleanupPageLibraries?.(); // Clean up page-specific libraries
+          
           await coverFromBottom(current?.container);
         },
 
         async afterLeave({ current }) {
           if (current?.container && window.gsap) window.gsap.set(current.container, { display: 'none' });
+          
+          // Destroy custom scripts and CSS AFTER transition completes
+          window.destroyCustomScripts?.();
+          window.destroyCustomCSS?.();
         },
 
         async beforeEnter({ next }) {
@@ -791,6 +1012,21 @@ function start() {
 
           await afterSwapReady(next?.container);
           await new Promise(r => requestAnimationFrame(r));
+          
+          // Load scripts and CSS BEFORE transition starts to prevent layout shift
+          try {
+            const response = await fetch(window.location.href);
+            const html = await response.text();
+            
+            // Process the full HTML for scripts and CSS
+            await window.loadAssetsFromHTML?.(html);
+            await window.executeCustomScripts?.('init', html);
+            await window.executeCustomCSS?.(html);
+          } catch (error) {
+            // Fallback to current document
+            window.initCustomScripts?.();
+            window.initCustomCSS?.();
+          }
         },
 
         async enter({ next }) {
@@ -804,9 +1040,10 @@ function start() {
           if (pendingNavigation) {
             const pending = pendingNavigation;
             pendingNavigation = null;
-            console.log('▶️ Executing queued navigation:', pending);
             setTimeout(() => window.barba.go(pending), 100);
           }
+          
+          // Scripts already loaded in beforeEnter - no layout shift!
         },
 
         async after({ next }) {
@@ -1123,8 +1360,24 @@ window.closeMessageOverlay = closeMessageOverlay;
 
 // Add to Webflow ready event
 window.Webflow?.push(function() {
-  console.log('🌊 Webflow ready - initializing message toggle...');
   initMessageToggle();
+  
+  // Initialize scripts and CSS for the current page on load/refresh
+  setTimeout(async () => {
+    try {
+      const response = await fetch(window.location.href);
+      const html = await response.text();
+      
+      // Process the full HTML for scripts and CSS
+      await window.loadAssetsFromHTML?.(html);
+      await window.executeCustomScripts?.('init', html);
+      await window.executeCustomCSS?.(html);
+    } catch (error) {
+      // Fallback to current document
+      window.initCustomScripts?.();
+      window.initCustomCSS?.();
+    }
+  }, 100);
 });
 
 // Script reinitialization is now handled in the main transition's after hook
