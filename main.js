@@ -1021,16 +1021,11 @@ window.removeCustomCSS = removeCustomCSS;
   function resetTransitionState() {
     isTransitioning = false;
     pendingNavigation = null;
-    
-    // Ensure scroll is enabled
     document.body.style.overflow = '';
     window.lenis?.start();
     
-    // Ensure pointer events are enabled on container
     const container = document.querySelector('[data-barba="container"]');
-    if (container) {
-      container.style.pointerEvents = '';
-    }
+    if (container) container.style.pointerEvents = '';
   }
 
   /**
@@ -1062,6 +1057,36 @@ function start() {
       if (!link) return;
       
       const href = link.getAttribute('href') || '';
+      const isSpecialNavButton = link.hasAttribute('special-nav-button');
+      
+      // Handle special nav button with hash
+      if (isSpecialNavButton && href.includes('#')) {
+        const linkUrl = new URL(link.href);
+        const currentUrl = new URL(window.location.href);
+        
+        // Close message overlay if open
+        window.closeMessageOverlay?.();
+        
+        // Same page: smooth scroll with Lenis
+        if (linkUrl.pathname === currentUrl.pathname && linkUrl.hash) {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Update URL immediately without scrolling
+          window.history.replaceState(null, '', link.href);
+          
+          const targetElement = document.querySelector(linkUrl.hash);
+          if (targetElement && window.lenis) {
+            window.lenis.scrollTo(targetElement, {
+              offset: 0,
+              duration: 1.2
+            });
+          }
+          return;
+        }
+        
+        // Different page: let Barba handle it (hash extracted in hooks)
+      }
       
       // Only handle internal page links
       if (href.startsWith('/') && !href.startsWith('/#')) {
@@ -1093,6 +1118,9 @@ function start() {
         const isDownload = el.hasAttribute('download');
         const isPrevent = el.hasAttribute('data-barba-prevent');
         const isRelative = href.startsWith('/');
+        
+        // Allow special nav button even with hash
+        if (el.hasAttribute('special-nav-button') && isHash) return false;
         
         let isAllowedHost = false;
         if (!isRelative) { 
@@ -1167,8 +1195,23 @@ function start() {
           }
         },
 
-        async enter({ next }) {
-          window.scrollTo(0, 0);
+        async enter({ next, trigger }) {
+          // Extract hash from trigger element (if special nav button)
+          const triggerHash = trigger?.hasAttribute?.('special-nav-button') 
+            ? new URL(trigger.href).hash 
+            : null;
+          const hash = triggerHash || window.location.hash;
+          
+          if (hash) {
+            window.history.replaceState(null, '', window.location.pathname + hash);
+            const targetElement = document.querySelector(hash);
+            if (targetElement) {
+              targetElement.scrollIntoView({ behavior: 'instant', block: 'start' });
+            }
+          } else {
+            window.scrollTo(0, 0);
+          }
+          
           await revealToTop(next?.container);
           
           document.body.style.overflow = '';
