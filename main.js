@@ -723,6 +723,8 @@ function executeCustomCSS(htmlString = null) {
     styles = Array.from(document.querySelectorAll('style[data-barba-css]'));
   }
   
+  let injectedCount = 0;
+  
   styles.forEach((style) => {
     try {
       // Get the CSS content
@@ -733,11 +735,16 @@ function executeCustomCSS(htmlString = null) {
         newStyle.textContent = cssContent;
         newStyle.setAttribute('data-barba-injected', 'true');
         document.head.appendChild(newStyle);
+        injectedCount++;
       }
     } catch (error) {
       console.error('Failed to inject CSS style:', error);
     }
   });
+  
+  if (injectedCount > 0) {
+    console.log(`🎨 Loaded ${injectedCount} custom CSS style${injectedCount > 1 ? 's' : ''}`);
+  }
 }
 
 /**
@@ -848,8 +855,11 @@ window.removeCustomCSS = removeCustomCSS;
     const htmlTag = nextHTMLString.match(/<html[^>]*>/i)?.[0];
     const wfPage = htmlTag && htmlTag.match(/data-wf-page="([^"]+)"/i)?.[1];
     if (wfPage) document.documentElement.setAttribute('data-wf-page', wfPage);
+    
     const bodyClass = nextHTMLString.match(/<body[^>]*class="([^"]*)"/i)?.[1];
-    if (typeof bodyClass === 'string') document.body.className = bodyClass;
+    if (typeof bodyClass === 'string') {
+      document.body.className = bodyClass;
+    }
   }
 
   /**
@@ -1061,31 +1071,34 @@ function start() {
       
       // Handle special nav button with hash
       if (isSpecialNavButton && href.includes('#')) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        window.closeMessageOverlay?.();
+        
         const linkUrl = new URL(link.href);
         const currentUrl = new URL(window.location.href);
         
-        // Close message overlay if open
-        window.closeMessageOverlay?.();
-        
-        // Same page: smooth scroll with Lenis
-        if (linkUrl.pathname === currentUrl.pathname && linkUrl.hash) {
-          e.preventDefault();
-          e.stopPropagation();
-          
-          // Update URL immediately without scrolling
+        // Same page: smooth scroll
+        if (linkUrl.pathname === currentUrl.pathname) {
           window.history.replaceState(null, '', link.href);
-          
           const targetElement = document.querySelector(linkUrl.hash);
           if (targetElement && window.lenis) {
-            window.lenis.scrollTo(targetElement, {
-              offset: 0,
-              duration: 1.2
-            });
+            window.lenis.scrollTo(targetElement, { offset: 0, duration: 1.2 });
           }
           return;
         }
         
-        // Different page: let Barba handle it (hash extracted in hooks)
+        // Different page: store hash before transition
+        window.barbaNavigationHash = linkUrl.hash;
+        
+        if (isTransitioning) {
+          pendingNavigation = link.href;
+          return;
+        }
+        
+        window.barba?.go?.(link.href);
+        return;
       }
       
       // Only handle internal page links
@@ -1166,7 +1179,12 @@ function start() {
           window.destroyCustomCSS?.();
         },
 
-        async beforeEnter({ next }) {
+        async beforeEnter({ next, trigger }) {
+          // Hash may already be set by click handler, otherwise check for direct URL navigation
+          if (!window.barbaNavigationHash) {
+            window.barbaNavigationHash = (!trigger && window.location.hash) || null;
+          }
+          
           await ensureSyncHtmlBody(next);
           
           if (next?.container && window.gsap) {
@@ -1176,42 +1194,33 @@ function start() {
           await afterSwapReady(next?.container);
           await new Promise(r => requestAnimationFrame(r));
           
-          // Preload videos during transition to prevent flash
           window.preloadVideoOnScroll?.();
           
-          // Load scripts and CSS BEFORE transition starts to prevent layout shift
           try {
             const response = await fetch(window.location.href);
             const html = await response.text();
-            
-            // Process the full HTML for scripts and CSS
             await window.loadAssetsFromHTML?.(html);
-            await window.executeCustomScripts?.('init', html);
             await window.executeCustomCSS?.(html);
+            await window.executeCustomScripts?.('init', html);
           } catch (error) {
-            // Fallback to current document
-            window.initCustomScripts?.();
             window.initCustomCSS?.();
+            window.initCustomScripts?.();
           }
         },
 
         async enter({ next, trigger }) {
-          // Extract hash from trigger element (if special nav button)
-          const triggerHash = trigger?.hasAttribute?.('special-nav-button') 
-            ? new URL(trigger.href).hash 
-            : null;
-          const hash = triggerHash || window.location.hash;
+          const hash = window.barbaNavigationHash;
           
           if (hash) {
             window.history.replaceState(null, '', window.location.pathname + hash);
-            const targetElement = document.querySelector(hash);
-            if (targetElement) {
-              targetElement.scrollIntoView({ behavior: 'instant', block: 'start' });
-            }
+            document.querySelector(hash)?.scrollIntoView({ behavior: 'instant', block: 'start' });
+            void document.body.offsetHeight;
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
           } else {
             window.scrollTo(0, 0);
           }
           
+          window.barbaNavigationHash = null;
           await revealToTop(next?.container);
           
           document.body.style.overflow = '';
