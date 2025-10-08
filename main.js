@@ -1053,6 +1053,22 @@ function start() {
       history.scrollRestoration = 'manual';
     }
 
+    // Queue browser back/forward navigation during transitions
+    window.addEventListener('popstate', (e) => {
+      if (isTransitioning && !pendingNavigation) {
+        // Block Barba from handling this and queue it
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        
+        pendingNavigation = {
+          url: window.location.href,
+          hash: null,
+          isSpecial: false
+        };
+        console.log('⏸️ Browser back/forward queued - transition in progress');
+      }
+    }, true); // Capture phase to intercept before Barba
+
     // Add scroll lock styles for transitions (same approach as message overlay)
     if (!document.getElementById('barba-scroll-lock-styles')) {
       const style = document.createElement('style');
