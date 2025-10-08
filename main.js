@@ -1048,6 +1048,26 @@ function start() {
   startCalled = true;
   // Initialize Barba.js page transitions
 
+    // Prevent browser from automatically restoring scroll positions
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual';
+    }
+
+    // Add scroll lock styles for transitions (same approach as message overlay)
+    if (!document.getElementById('barba-scroll-lock-styles')) {
+      const style = document.createElement('style');
+      style.id = 'barba-scroll-lock-styles';
+      style.textContent = `
+        html.barba-transitioning {
+          overflow: hidden !important;
+        }
+        html.barba-transitioning body {
+          overflow: hidden !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
     // Reset state before initializing
     resetTransitionState();
 
@@ -1089,11 +1109,17 @@ function start() {
           return;
         }
         
-        // Different page: store hash before transition
+        // Different page: store hash before transition and mark as special navigation
         window.barbaNavigationHash = linkUrl.hash;
+        window.barbaSpecialNavButton = true; // Flag for theme switching
         
         if (isTransitioning) {
-          pendingNavigation = link.href;
+          // Store URL and flags for queued navigation
+          pendingNavigation = {
+            url: link.href,
+            hash: linkUrl.hash,
+            isSpecial: true
+          };
           return;
         }
         
@@ -1108,7 +1134,11 @@ function start() {
         
         // If transition is in progress, queue the navigation
         if (isTransitioning) {
-          pendingNavigation = link.href;
+          pendingNavigation = {
+            url: link.href,
+            hash: null,
+            isSpecial: false
+          };
           console.log('⏸️ Transition in progress - navigation queued');
           return;
         }
@@ -1161,31 +1191,43 @@ function start() {
         async leave({ current }) {
           isTransitioning = true;
           window.lenis?.stop();
-          document.body.style.overflow = 'hidden';
-          window.closeMessageOverlay?.(); // Close message overlay on navigation
+          document.documentElement.classList.add('barba-transitioning');
+          
+          // Lock scroll position to prevent browser history restoration during animation
+          const lockedY = window.scrollY;
+          const scrollLock = () => window.scrollY !== lockedY && window.scrollTo(0, lockedY);
+          window.addEventListener('scroll', scrollLock, { passive: true });
+          window.barbaScrollLockCleanup = () => window.removeEventListener('scroll', scrollLock);
+          
+          window.closeMessageOverlay?.();
           window.stopAllHoverVideos?.();
           window.stopAllAutoplayVideos?.();
           window.stopAllVideoOnScroll?.();
-          window.cleanupPageLibraries?.(); // Clean up page-specific libraries
+          window.cleanupPageLibraries?.();
           
           await coverFromBottom(current?.container);
         },
 
         async afterLeave({ current }) {
+          // Remove scroll lock and hide old container
+          window.barbaScrollLockCleanup?.();
           if (current?.container && window.gsap) window.gsap.set(current.container, { display: 'none' });
           
-          // Destroy custom scripts and CSS AFTER transition completes
+          // Scroll to top (invisible while page is covered) unless hash navigation
+          if (!window.barbaNavigationHash) window.scrollTo(0, 0);
+          
+          window.cleanupThemeSwitching?.();
           window.destroyCustomScripts?.();
           window.destroyCustomCSS?.();
         },
 
         async beforeEnter({ next, trigger }) {
-          // Hash may already be set by click handler, otherwise check for direct URL navigation
           if (!window.barbaNavigationHash) {
             window.barbaNavigationHash = (!trigger && window.location.hash) || null;
           }
           
           await ensureSyncHtmlBody(next);
+          window.initThemeSwitching?.(); // Apply theme before reveal to prevent flash
           
           if (next?.container && window.gsap) {
             window.gsap.set(next.container, { clearProps: 'opacity,visibility', display: 'block' });
@@ -1193,7 +1235,6 @@ function start() {
 
           await afterSwapReady(next?.container);
           await new Promise(r => requestAnimationFrame(r));
-          
           window.preloadVideoOnScroll?.();
           
           try {
@@ -1211,29 +1252,33 @@ function start() {
         async enter({ next, trigger }) {
           const hash = window.barbaNavigationHash;
           
+          // Handle hash navigation (scroll to section)
           if (hash) {
             window.history.replaceState(null, '', window.location.pathname + hash);
             document.querySelector(hash)?.scrollIntoView({ behavior: 'instant', block: 'start' });
             void document.body.offsetHeight;
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-          } else {
-            window.scrollTo(0, 0);
           }
           
           window.barbaNavigationHash = null;
           await revealToTop(next?.container);
           
-          document.body.style.overflow = '';
+          // Unlock scroll and restart Lenis
+          document.documentElement.classList.remove('barba-transitioning');
+          window.lenis?.start();
           isTransitioning = false;
           
-          // Handle any pending navigation
+          // Handle pending navigation and restore flags
           if (pendingNavigation) {
             const pending = pendingNavigation;
             pendingNavigation = null;
-            setTimeout(() => window.barba.go(pending), 100);
+            
+            // Restore flags before executing queued navigation
+            if (pending.hash) window.barbaNavigationHash = pending.hash;
+            if (pending.isSpecial) window.barbaSpecialNavButton = true;
+            
+            setTimeout(() => window.barba.go(pending.url), 100);
           }
-          
-          // Scripts already loaded in beforeEnter - no layout shift!
         },
 
         async after({ next }) {
@@ -1310,6 +1355,7 @@ function start() {
           window.initWordAnimations?.();
           window.initCharAnimations?.();
           window.runWidowFix?.();
+          window.initThemeSwitching?.(); // Initialize theme switching on first load
           window.initializePageLibraries?.(); // Initialize page-specific libraries on first load
 
           try { window.ScrollTrigger.refresh(); } catch (e) {}
@@ -1580,3 +1626,106 @@ window.Webflow?.push(function() {
 });
 
 // Script reinitialization is now handled in the main transition's after hook
+
+// ============================================
+// THEME SWITCHING MODULE
+// ============================================
+
+/**
+ * Theme switching: Dark on homepage, light on other pages
+ * Switches to light when [light-mode-trigger] scrolls out of view
+ */
+function initThemeSwitching() {
+  const body = document.body;
+  const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
+  
+  // Add smooth transition styles
+  if (!document.getElementById('theme-transition-styles')) {
+    const style = document.createElement('style');
+    style.id = 'theme-transition-styles';
+    style.textContent = `
+      body.theme-transitioning,
+      body.theme-transitioning * {
+        transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, fill 0.3s ease, stroke 0.3s ease;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  // Set theme with optional transition
+  const setTheme = (isDark, smooth = false) => {
+    if (smooth) {
+      body.classList.add('theme-transitioning');
+      setTimeout(() => body.classList.remove('theme-transitioning'), 300);
+    }
+    body.classList.toggle('theme-dark', isDark);
+    body.classList.toggle('theme-light', !isDark);
+  };
+  
+  // Non-homepage: always light theme
+  if (!isHomepage) {
+    setTheme(false);
+    return;
+  }
+  
+  // Homepage: find trigger section
+  const trigger = document.querySelector('[light-mode-trigger]');
+  if (!trigger) {
+    setTheme(true); // Default to dark if no trigger
+    return;
+  }
+  
+  // Check if trigger is visible
+  const isVisible = () => {
+    const rect = trigger.getBoundingClientRect();
+    return rect.top < window.innerHeight && rect.bottom > 0;
+  };
+  
+  // Set initial theme (light if from special button, otherwise based on position)
+  const fromSpecialButton = window.barbaSpecialNavButton;
+  let isDark = fromSpecialButton ? false : isVisible();
+  setTheme(isDark);
+  
+  if (fromSpecialButton) window.barbaSpecialNavButton = false;
+  
+  // Enable observer only after user scrolls
+  let hasScrolled = false;
+  const onScroll = () => {
+    hasScrolled = true;
+    window.removeEventListener('scroll', onScroll);
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  
+  // Watch trigger and switch theme when it enters/leaves viewport
+  const observer = new IntersectionObserver(([entry]) => {
+    if (!hasScrolled) return;
+    
+    const shouldBeDark = entry.isIntersecting;
+    if (shouldBeDark !== isDark) {
+      isDark = shouldBeDark;
+      setTheme(isDark, true);
+    }
+  }, { threshold: [0, 0.5, 1] });
+  
+  observer.observe(trigger);
+  
+  // Store for cleanup
+  if (!window.themeObservers) window.themeObservers = [];
+  window.themeObservers.push(observer);
+}
+
+function cleanupThemeSwitching() {
+  if (window.themeObservers) {
+    window.themeObservers.forEach(o => o.disconnect());
+    window.themeObservers = [];
+  }
+}
+
+window.initThemeSwitching = initThemeSwitching;
+window.cleanupThemeSwitching = cleanupThemeSwitching;
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initThemeSwitching);
+} else {
+  initThemeSwitching();
+}
