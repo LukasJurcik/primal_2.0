@@ -633,6 +633,7 @@ function loadCSS(href) {
   });
 }
 
+
 /**
  * Load scripts and CSS from HTML content
  */
@@ -653,6 +654,7 @@ async function loadAssetsFromHTML(htmlString) {
   for (const script of scripts) {
     await loadScript(script.src);
   }
+  
 }
 
 /**
@@ -1820,7 +1822,7 @@ function initPageLoader() {
   // Setup
   loader.style.setProperty('display', 'block', 'important');
   gsap.set(loader, { top: '0%' });
-  gsap.set(loaderContent, { opacity: 0 });
+  gsap.set(loaderContent, { opacity: 0, y: '2.5rem' });
   if (container) gsap.set(container, { display: 'none' });
   
   // Lock scroll
@@ -1850,8 +1852,9 @@ function initPageLoader() {
   window._loaderTimeline = tl;
   
   if (loaderContent) {
-    tl.to(loaderContent, { opacity: 1, duration: 0.25, ease: 'power2.out' })
-      .to(loaderContent, { opacity: 0, duration: 0.4, ease: 'power2.in', delay: 3 });
+    tl.to(loaderContent, { opacity: 1, duration: 0.7, ease: 'power2.out' })
+      .to(loaderContent, { y: 0, duration: 0.5, ease: 'power4.out' }, '<')
+      .to(loaderContent, { opacity: 0, duration: 0.7, ease: 'power2.out', delay: 3 });
   }
   
   tl.to(loader, { top: '-101%', duration: 1, ease: 'power2.inOut' }, '<')
