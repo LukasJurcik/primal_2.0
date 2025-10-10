@@ -429,6 +429,7 @@ window.stopAllVideoOnScroll = stopAllVideoOnScroll;
 
 /**
  * Initialize Lenis smooth scrolling
+ * Start in stopped state if stop-scroll class is active (loader or overlay)
  */
 window.lenis = new window.Lenis({
   autoRaf: true,
@@ -436,6 +437,11 @@ window.lenis = new window.Lenis({
   smoothWheel: true,
   smoothTouch: true
 });
+
+// If stop-scroll is active (from loader in head), keep Lenis stopped
+if (document.documentElement.classList.contains('stop-scroll')) {
+  window.lenis.stop();
+}
 
 // Configure ScrollTrigger default configuration for Webflow interactions
 if (window.ScrollTrigger) {
@@ -543,13 +549,11 @@ setInterval(updateCETTime, 1000);
 /**
  * Scroll to top on page refresh
  * Prevents browser from restoring scroll position
+ * Note: Actual scroll happens during loader animation to prevent flash
  */
 if ('scrollRestoration' in window.history) {
   window.history.scrollRestoration = 'manual';
 }
-window.onbeforeunload = function () {
-  window.scrollTo(0, 0);
-};
 
 /**
  * Scroll to top button functionality
@@ -1024,6 +1028,9 @@ window.removeCustomCSS = removeCustomCSS;
     
     await tl;
   };
+  
+  // Export for use in page loader
+  window.revealToTop = revealToTop;
 
   /**
    * Reset transition state and ensure clean initialization
@@ -1128,6 +1135,7 @@ function start() {
         // Different page: store hash before transition and mark as special navigation
         window.barbaNavigationHash = linkUrl.hash;
         window.barbaSpecialNavButton = true; // Flag for theme switching
+        sessionStorage.setItem('specialNavButton', 'true'); // For <head> theme script
         
         if (isTransitioning) {
           // Store URL and flags for queued navigation
@@ -1232,6 +1240,9 @@ function start() {
           // Scroll to top (invisible while page is covered) unless hash navigation
           if (!window.barbaNavigationHash) window.scrollTo(0, 0);
           
+          // Set theme INSTANTLY while page is covered (prevents flash)
+          window.setInitialTheme?.();
+          
           window.cleanupThemeSwitching?.();
           window.destroyCustomScripts?.();
           window.destroyCustomCSS?.();
@@ -1243,10 +1254,15 @@ function start() {
           }
           
           await ensureSyncHtmlBody(next);
-          window.initThemeSwitching?.(); // Apply theme before reveal to prevent flash
+          window.initThemeSwitching?.(); // Set up scroll observer
           
           if (next?.container && window.gsap) {
-            window.gsap.set(next.container, { clearProps: 'opacity,visibility', display: 'block' });
+            // Keep container hidden until reveal animation starts
+            window.gsap.set(next.container, { 
+              display: 'block',
+              opacity: 0,
+              visibility: 'hidden'
+            });
           }
 
           await afterSwapReady(next?.container);
@@ -1456,23 +1472,11 @@ function initMessageToggle() {
     return;
   }
 
-  console.log('🔘 Initializing message toggle...');
-  console.log('Webflow found:', !!window.Webflow);
-  
   const toggleButton = document.querySelector('.nav-button.is--toggle');
-  console.log('Toggle button found:', toggleButton);
-  
   const overlayWrapper = document.querySelector('.message-overlay_wrapper');
-  console.log('Overlay wrapper found:', overlayWrapper);
-  
   const messageBlur = document.querySelector('.floater-message_blur');
-  console.log('Message blur found:', messageBlur);
-  
   const messageAvailable = document.querySelector('.floater-message_available');
-  console.log('Message available found:', messageAvailable);
-
   const closeButton = document.querySelector('.floater-message_close');
-  console.log('Close button found:', closeButton);
 
   if (!toggleButton || !overlayWrapper || !messageBlur || !messageAvailable || !closeButton) {
     console.warn('Message toggle: Required elements not found');
@@ -1502,10 +1506,10 @@ function initMessageToggle() {
       // Stop Lenis smooth scroll
       window.lenis?.stop();
       // Add class to html element for CSS-based scroll lock
-      document.documentElement.classList.add('message-overlay-active');
+      document.documentElement.classList.add('stop-scroll');
     } else {
       // Remove class from html element
-      document.documentElement.classList.remove('message-overlay-active');
+      document.documentElement.classList.remove('stop-scroll');
       // Restart Lenis smooth scroll
       window.lenis?.start();
     }
@@ -1513,8 +1517,6 @@ function initMessageToggle() {
 
   // Create the click handler
   toggleButton.toggleHandler = () => {
-    console.log('Toggle button clicked!');
-    
     // Toggle button state
     toggleButton.classList.toggle('is--active');
     
@@ -1648,18 +1650,50 @@ window.Webflow?.push(function() {
 // ============================================
 
 /**
- * Theme switching: Dark on homepage, light on other pages
- * Switches to light when [light-mode-trigger] scrolls out of view
+ * Set initial theme instantly (called early in Barba lifecycle to prevent flash)
  */
-function initThemeSwitching() {
+function setInitialTheme() {
+  const html = document.documentElement;
   const body = document.body;
   const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
   
-  // Add smooth transition styles
+  // Determine theme based on page and special button flag
+  const fromSpecialButton = window.barbaSpecialNavButton || sessionStorage.getItem('specialNavButton') === 'true';
+  const isDark = isHomepage && !fromSpecialButton;
+  
+  // Set theme on both html and body using toggle for consistency
+  html.classList.toggle('theme-dark', isDark);
+  html.classList.toggle('theme-light', !isDark);
+  body.classList.toggle('theme-dark', isDark);
+  body.classList.toggle('theme-light', !isDark);
+  
+  // Cleanup flags
+  if (fromSpecialButton) {
+    window.barbaSpecialNavButton = false;
+    sessionStorage.removeItem('specialNavButton');
+  }
+}
+
+/**
+ * Theme switching: Sets up scroll-based theme observer on homepage
+ * Switches theme when [light-mode-trigger] enters/leaves viewport
+ */
+function initThemeSwitching() {
+  const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
+  
+  // Only setup observer on homepage
+  if (!isHomepage) return;
+  
+  const trigger = document.querySelector('[light-mode-trigger]');
+  if (!trigger) return;
+  
+  // Add smooth transition styles once
   if (!document.getElementById('theme-transition-styles')) {
     const style = document.createElement('style');
     style.id = 'theme-transition-styles';
     style.textContent = `
+      html.theme-transitioning,
+      html.theme-transitioning *,
       body.theme-transitioning,
       body.theme-transitioning * {
         transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, fill 0.3s ease, stroke 0.3s ease;
@@ -1668,41 +1702,27 @@ function initThemeSwitching() {
     document.head.appendChild(style);
   }
   
-  // Set theme with optional transition
-  const setTheme = (isDark, smooth = false) => {
-    if (smooth) {
-      body.classList.add('theme-transitioning');
-      setTimeout(() => body.classList.remove('theme-transitioning'), 300);
-    }
+  // Helper to set theme with smooth transition
+  const setTheme = (isDark) => {
+    const html = document.documentElement;
+    const body = document.body;
+    
+    html.classList.add('theme-transitioning');
+    body.classList.add('theme-transitioning');
+    
+    html.classList.toggle('theme-dark', isDark);
+    html.classList.toggle('theme-light', !isDark);
     body.classList.toggle('theme-dark', isDark);
     body.classList.toggle('theme-light', !isDark);
+    
+    setTimeout(() => {
+      html.classList.remove('theme-transitioning');
+      body.classList.remove('theme-transitioning');
+    }, 300);
   };
   
-  // Non-homepage: always light theme
-  if (!isHomepage) {
-    setTheme(false);
-    return;
-  }
-  
-  // Homepage: find trigger section
-  const trigger = document.querySelector('[light-mode-trigger]');
-  if (!trigger) {
-    setTheme(true); // Default to dark if no trigger
-    return;
-  }
-  
-  // Check if trigger is visible
-  const isVisible = () => {
-    const rect = trigger.getBoundingClientRect();
-    return rect.top < window.innerHeight && rect.bottom > 0;
-  };
-  
-  // Set initial theme (light if from special button, otherwise based on position)
-  const fromSpecialButton = window.barbaSpecialNavButton;
-  let isDark = fromSpecialButton ? false : isVisible();
-  setTheme(isDark);
-  
-  if (fromSpecialButton) window.barbaSpecialNavButton = false;
+  // Track current theme state (read from body classes)
+  let isDark = document.body.classList.contains('theme-dark');
   
   // Enable observer only after user scrolls
   let hasScrolled = false;
@@ -1719,7 +1739,7 @@ function initThemeSwitching() {
     const shouldBeDark = entry.isIntersecting;
     if (shouldBeDark !== isDark) {
       isDark = shouldBeDark;
-      setTheme(isDark, true);
+      setTheme(isDark);
     }
   }, { threshold: [0, 0.5, 1] });
   
@@ -1737,11 +1757,109 @@ function cleanupThemeSwitching() {
   }
 }
 
+// Export functions for Barba hooks to use
+window.setInitialTheme = setInitialTheme;
 window.initThemeSwitching = initThemeSwitching;
 window.cleanupThemeSwitching = cleanupThemeSwitching;
 
+// ============================================
+// PAGE LOADER MODULE
+// ============================================
+
+function revealOnInitialLoad(container) {
+  if (!container || !window.gsap) return;
+  
+  window.gsap.set(container, {
+    display: 'block',
+    visibility: 'visible',
+    opacity: 0,
+    y: '-2.5rem',
+    filter: 'blur(10px)',
+    scale: 0.90,
+    transformOrigin: 'top center'
+  });
+  
+  container.style.pointerEvents = 'none';
+  
+  window.gsap.timeline({
+    onComplete: () => container.style.pointerEvents = ''
+  })
+  .to(container, { opacity: 1, duration: 1.5, ease: 'power2.out' }, 0)
+  .to(container, { filter: 'blur(0px)', duration: 1.8, ease: 'power2.out' }, 0.25)
+  .to(container, { scale: 1, duration: 2, ease: 'power2.out' }, 0)
+  .to(container, { y: '0rem', duration: 2, ease: 'power2.out' }, 0);
+}
+
+function initPageLoader() {
+  const loader = document.querySelector('.loader');
+  const container = document.querySelector('[data-barba="container"]');
+  if (!loader || !window.gsap) return;
+  
+  // Cleanup existing state
+  window._loaderTimeline?.kill();
+  window._loaderScrollCleanup?.();
+  delete window._loaderTimeline;
+  delete window._loaderScrollCleanup;
+  document.documentElement.classList.remove('stop-scroll');
+  window.lenis?.start();
+  
+  // Fail-safe timeout
+  const failSafe = setTimeout(() => {
+    if (container) {
+      container.style.display = '';
+      container.style.opacity = '1';
+      container.style.visibility = 'visible';
+    }
+    document.documentElement.classList.remove('stop-scroll');
+    window.lenis?.start();
+    if (loader) loader.style.setProperty('display', 'none', 'important');
+  }, 5000);
+  
+  const loaderContent = loader.querySelector('.loader-content_wrapper');
+  
+  // Setup
+  loader.style.setProperty('display', 'block', 'important');
+  gsap.set(loader, { top: '0%' });
+  gsap.set(loaderContent, { opacity: 0 });
+  if (container) gsap.set(container, { display: 'none' });
+  
+  // Lock scroll
+  window.lenis?.stop();
+  document.documentElement.classList.add('stop-scroll');
+  const preventScroll = (e) => { e.preventDefault(); e.stopPropagation(); };
+  document.addEventListener('wheel', preventScroll, { passive: false });
+  document.addEventListener('touchmove', preventScroll, { passive: false });
+  window._loaderScrollCleanup = () => {
+    document.removeEventListener('wheel', preventScroll);
+    document.removeEventListener('touchmove', preventScroll);
+  };
+  
+  // Animation
+  const tl = gsap.timeline({
+    onComplete: () => {
+      clearTimeout(failSafe);
+      window._loaderScrollCleanup?.();
+      delete window._loaderScrollCleanup;
+      delete window._loaderTimeline;
+      document.documentElement.classList.remove('stop-scroll');
+      window.lenis?.start();
+      loader.style.setProperty('display', 'none', 'important');
+    }
+  });
+  
+  window._loaderTimeline = tl;
+  
+  if (loaderContent) {
+    tl.to(loaderContent, { opacity: 1, duration: 0.25, ease: 'power2.out' })
+      .to(loaderContent, { opacity: 0, duration: 0.4, ease: 'power2.in', delay: 3 });
+  }
+  
+  tl.to(loader, { top: '-101%', duration: 1, ease: 'power2.inOut' }, '<')
+    .call(() => container && revealOnInitialLoad(container), null, '<');
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initThemeSwitching);
+  document.addEventListener('DOMContentLoaded', initPageLoader);
 } else {
-  initThemeSwitching();
+  initPageLoader();
 }
