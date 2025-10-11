@@ -21,141 +21,6 @@ function afterSwapReady(scope = document) {
 window.afterSwapReady = afterSwapReady;
 
 // ============================================
-// TEXT ANIMATION MODULE
-// ============================================
-
-/**
- * Initialize line reveal text animations
- * Animates text elements with data-line-reveal="true" attribute
- * Uses GSAP SplitText for line-by-line reveal animations
- */
-function initTextAnimations() {
-  // Initialize line reveal animations
-  if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
-    console.warn('GSAP or SplitText not found - text animations disabled');
-    return;
-  }
-
-  // Process immediately, don't wait for fonts
-  document.querySelectorAll("[data-line-reveal='true']").forEach((text) => {
-    if (text.dataset.textAnimationBound === '1') return;
-    
-    try {
-      SplitText.create(text, {
-        type: "lines",
-        autoSplit: true,
-        mask: "lines",
-        linesClass: "line",
-        onSplit(self) {
-          return gsap.timeline()
-          .from(self.lines, {
-            yPercent: 110,
-            delay: 0.1, 
-            duration: 0.8,
-            stagger: { amount: 0.5 },
-            ease: "power2.out", // Add easing here
-          });
-        },
-      });
-
-      gsap.set(text, { visibility: "visible" });
-      text.dataset.textAnimationBound = '1';
-    } catch (error) {
-      console.warn('Text animation failed for element:', text, error);
-    }
-  });
-}
-window.initTextAnimations = initTextAnimations;
-
-/**
- * Initialize word reveal text animations
- * Animates text elements with data-word-reveal="true" attribute
- * Uses GSAP SplitText for word-by-word reveal animations
- * Triggers on page load (perfect for hero headlines)
- */
-function initWordAnimations() {
-  // Initialize word reveal animations
-  if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
-    console.warn('GSAP or SplitText not found - word animations disabled');
-    return;
-  }
-
-  // Process immediately, don't wait for fonts
-  document.querySelectorAll("[data-word-reveal='true']").forEach((text) => {
-    if (text.dataset.wordAnimationBound === '1') return;
-    
-    try {
-      SplitText.create(text, {
-        type: "words",
-        autoSplit: true,
-        mask: "words",
-        wordsClass: "word",
-        onSplit(self) {
-          return gsap.timeline()
-          .from(self.words, {
-            yPercent: 110,
-            delay: 0, 
-            duration: 0.7,
-            stagger: { amount: 0.2 },
-            ease: "cubic-bezier(.55,0,.25,1)",
-          });
-        },
-      });
-
-      gsap.set(text, { visibility: "visible" });
-      text.dataset.wordAnimationBound = '1';
-    } catch (error) {
-      console.warn('Word animation failed for element:', text, error);
-    }
-  });
-}
-window.initWordAnimations = initWordAnimations;
-
-/**
- * Initialize character reveal text animations
- * Animates text elements with data-char-reveal="true" attribute
- * Uses GSAP SplitText for character-by-character reveal animations
- * Triggers on page load (perfect for hero headlines)
- */
-function initCharAnimations() {
-  // Initialize character reveal animations
-  if (typeof window.gsap === "undefined" || typeof window.SplitText === "undefined") {
-    console.warn('GSAP or SplitText not found - character animations disabled');
-    return;
-  }
-
-  // Process immediately, don't wait for fonts
-  document.querySelectorAll("[data-char-reveal='true']").forEach((text) => {
-    if (text.dataset.charAnimationBound === '1') return;
-    
-    try {
-      SplitText.create(text, {
-        type: "chars",
-        autoSplit: true,
-        mask: "chars",
-        charsClass: "char",
-        onSplit(self) {
-          return gsap.timeline()
-          .from(self.chars, {
-            yPercent: 110,
-            delay: 0,
-            duration: 0.6,
-            stagger: { amount: 0.5 },
-            ease: "cubic-bezier(.75,.1,.15,1)",
-          });
-        },
-      });
-
-      gsap.set(text, { visibility: "visible" });
-      text.dataset.charAnimationBound = '1';
-    } catch (error) {
-      console.warn('Character animation failed for element:', text, error);
-    }
-  });
-}
-window.initCharAnimations = initCharAnimations;
-
-// ============================================
 // LENIS SCROLL BRIDGE
 // ============================================
 
@@ -1322,9 +1187,6 @@ function start() {
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
           window.initVideoOnScrollModule?.();
-          window.initTextAnimations?.();
-          window.initWordAnimations?.();
-          window.initCharAnimations?.();
           window.initMessageToggle?.();
           window.runWidowFix?.();
           window.reinitializePageLibraries?.(); // Reinitialize page-specific libraries
@@ -1385,9 +1247,6 @@ function start() {
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
           window.initVideoOnScrollModule?.();
-          window.initTextAnimations?.();
-          window.initWordAnimations?.();
-          window.initCharAnimations?.();
           window.runWidowFix?.();
           window.initThemeSwitching?.(); // Initialize theme switching on first load
           window.initializePageLibraries?.(); // Initialize page-specific libraries on first load
@@ -1786,10 +1645,10 @@ function revealOnInitialLoad(container) {
   window.gsap.timeline({
     onComplete: () => container.style.pointerEvents = ''
   })
-  .to(container, { opacity: 1, duration: 1.5, ease: 'power2.out' }, 0)
-  .to(container, { filter: 'blur(0px)', duration: 1.8, ease: 'power2.out' }, 0.25)
-  .to(container, { scale: 1, duration: 2, ease: 'power2.out' }, 0)
-  .to(container, { y: '0rem', duration: 2, ease: 'power2.out' }, 0);
+  .to(container, { opacity: 1, duration: 1, ease: 'power2.out' }, '<')
+  .to(container, { filter: 'blur(0px)', duration: 1.5, ease: 'power2.out' }, 0.35)
+  .to(container, { scale: 1, duration: 1.5, ease: 'power2.out' }, '<')
+  .to(container, { y: '0rem', duration: 1.5, ease: 'power2.out' }, '<');
 }
 
 function initPageLoader() {
@@ -1800,8 +1659,10 @@ function initPageLoader() {
   // Cleanup existing state
   window._loaderTimeline?.kill();
   window._loaderScrollCleanup?.();
+  window._lottieAnimation?.destroy();
   delete window._loaderTimeline;
   delete window._loaderScrollCleanup;
+  delete window._lottieAnimation;
   document.documentElement.classList.remove('stop-scroll');
   window.lenis?.start();
   
@@ -1818,12 +1679,34 @@ function initPageLoader() {
   }, 5000);
   
   const loaderContent = loader.querySelector('.loader-content_wrapper');
+  const lottieElement = loader.querySelector('.lottie-animation-json');
   
   // Setup
   loader.style.setProperty('display', 'block', 'important');
   gsap.set(loader, { top: '0%' });
-  gsap.set(loaderContent, { opacity: 0, y: '2.5rem' });
+  gsap.set(loaderContent, { opacity: 0, y: '2.5rem', filter: 'blur(10px)' });
   if (container) gsap.set(container, { display: 'none' });
+  
+  // Play Lottie animation after delay
+  if (lottieElement) {
+    // Disable autoplay and clear content
+    lottieElement.setAttribute('data-autoplay', '0');
+    lottieElement.innerHTML = '';
+    
+    // Wait for delay, then reinitialize with autoplay
+    setTimeout(() => {
+      lottieElement.setAttribute('data-autoplay', '1');
+      
+      // Force Webflow to reinitialize
+      if (window.Webflow && window.Webflow.require) {
+        try {
+          window.Webflow.require('lottie').init();
+        } catch (e) {
+          console.log('Webflow lottie reinit failed');
+        }
+      }
+    }, 200);
+  }
   
   // Lock scroll
   window.lenis?.stop();
@@ -1841,8 +1724,10 @@ function initPageLoader() {
     onComplete: () => {
       clearTimeout(failSafe);
       window._loaderScrollCleanup?.();
+      window._lottieAnimation?.destroy();
       delete window._loaderScrollCleanup;
       delete window._loaderTimeline;
+      delete window._lottieAnimation;
       document.documentElement.classList.remove('stop-scroll');
       window.lenis?.start();
       loader.style.setProperty('display', 'none', 'important');
@@ -1852,12 +1737,12 @@ function initPageLoader() {
   window._loaderTimeline = tl;
   
   if (loaderContent) {
-    tl.to(loaderContent, { opacity: 1, duration: 0.7, ease: 'power2.out' })
-      .to(loaderContent, { y: 0, duration: 0.5, ease: 'power4.out' }, '<')
-      .to(loaderContent, { opacity: 0, duration: 0.7, ease: 'power2.out', delay: 3 });
+    tl.to(loaderContent, { opacity: 1, filter: 'blur(0px)', duration: 1, ease: 'power2.out' })
+      .to(loaderContent, { y: 0, duration: 0.7, ease: 'power4.out' }, '<')
+      .to(loaderContent, { opacity: 0, filter: 'blur(10px)', duration: 1, ease: 'power2.out', delay: 1.1})
   }
   
-  tl.to(loader, { top: '-101%', duration: 1, ease: 'power2.inOut' }, '<')
+  tl.to(loader, { top: '-101%', duration: 1, ease: 'power4.inOut' }, '<')
     .call(() => container && revealOnInitialLoad(container), null, '<');
 }
 
