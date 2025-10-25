@@ -1679,28 +1679,17 @@ window.cleanupThemeSwitching = cleanupThemeSwitching;
 function revealOnInitialLoad(container) {
   if (!container || !window.gsap) return;
   
-  // Calculate dynamic transform origin based on viewport center
-  const rect = container.getBoundingClientRect();
-  const viewportCenterX = window.innerWidth / 2;
-  const viewportCenterY = window.innerHeight / 2;
-  
-  // Calculate intersection point between element and viewport center
-  const intersectionX = Math.max(0, Math.min(rect.width, viewportCenterX - rect.left));
-  const intersectionY = Math.max(0, Math.min(rect.height, viewportCenterY - rect.top));
-  
-  // Convert to percentage
-  const originX = (intersectionX / rect.width) * 100;
-  const originY = (intersectionY / rect.height) * 100;
-  const dynamicOrigin = `${originX}% ${originY}%`;
+  // Set transform origin to top center
+  const topCenterOrigin = '50% 0%';
   
   window.gsap.set(container, {
     display: 'block',
     visibility: 'visible',
     opacity: 0,
-    y: '-1rem',
+    y: '4rem',
     filter: 'blur(10px)',
-    scale: 0.94,
-    transformOrigin: dynamicOrigin
+    scale: 0.90,
+    transformOrigin: topCenterOrigin
   });
   
   container.style.pointerEvents = 'none';
