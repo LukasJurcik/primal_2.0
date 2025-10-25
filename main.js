@@ -442,15 +442,11 @@ document.addEventListener("DOMContentLoaded", function () {
 // ============================================
 // DYNAMIC SCRIPT & CSS LOADING SYSTEM
 // ============================================
-// 
-// This system allows pages to dynamically load external libraries and execute 
-// custom scripts during Barba.js transitions. Use these data attributes:
-//
-// - data-barba-load: Load external Libraries CDN's or CSS dynamically
-// - data-barba-init: Execute script on page enter
-// - data-barba-destroy: Execute cleanup script on page leave (optional)
-// - data-barba-css: Inject custom CSS styles
-//
+// Essential system for loading external libraries and executing custom scripts
+// during Barba.js transitions. Supports:
+// - data-barba-load: Load external CDN libraries
+// - data-barba-init: Execute custom scripts
+// - data-barba-css: Inject custom CSS
 // ============================================
 
 /**
@@ -458,7 +454,6 @@ document.addEventListener("DOMContentLoaded", function () {
  */
 function loadScript(src) {
   return new Promise((resolve, reject) => {
-    // Check if script is already loaded
     if (document.querySelector(`script[src="${src}"]`)) {
       resolve();
       return;
@@ -480,7 +475,6 @@ function loadScript(src) {
  */
 function loadCSS(href) {
   return new Promise((resolve, reject) => {
-    // Check if CSS is already loaded
     if (document.querySelector(`link[href="${href}"]`)) {
       resolve();
       return;
@@ -497,7 +491,6 @@ function loadCSS(href) {
     document.head.appendChild(link);
   });
 }
-
 
 /**
  * Load scripts and CSS from HTML content
@@ -519,11 +512,61 @@ async function loadAssetsFromHTML(htmlString) {
   for (const script of scripts) {
     await loadScript(script.src);
   }
-  
 }
 
 /**
+ * Instance Registry for automatic cleanup
+ * Tracks and manages all page-specific instances
+ */
+window.instanceRegistry = {
+  instances: new Map(),
+  initializedScripts: new Set(),
+  
+  register(name, instance, destroyMethod = 'destroy') {
+    this.instances.set(name, {
+      instance,
+      destroyMethod,
+      created: Date.now()
+    });
+    console.log(`📝 Registered instance: ${name}`);
+  },
+  
+  isScriptInitialized(scriptId) {
+    return this.initializedScripts.has(scriptId);
+  },
+  
+  markScriptInitialized(scriptId) {
+    this.initializedScripts.add(scriptId);
+    console.log(`🔒 Marked script as initialized: ${scriptId}`);
+  },
+  
+  destroyAll() {
+    console.log(`🧹 Destroying ${this.instances.size} registered instances`);
+    
+    for (const [name, data] of this.instances) {
+      try {
+        if (data.instance && typeof data.instance[data.destroyMethod] === 'function') {
+          data.instance[data.destroyMethod]();
+          console.log(`✅ Destroyed: ${name}`);
+        }
+      } catch (error) {
+        console.error(`❌ Error destroying ${name}:`, error);
+      }
+    }
+    
+    this.instances.clear();
+    
+    // Reset all initialization flags for page transitions
+    this.initializedScripts.clear();
+    // Reset specific script flags
+    window.macyInitialized = false;
+    console.log(`🔄 Reset all script initialization flags`);
+  }
+};
+
+/**
  * Execute custom scripts by data attribute
+ * Enhanced version with automatic double-execution prevention
  * Looks for scripts with data-barba-init or data-barba-destroy attributes
  * Can extract scripts from HTML string or current document
  */
@@ -541,11 +584,21 @@ function executeCustomScripts(action = 'init', htmlString = null) {
     scripts = Array.from(document.querySelectorAll(`script[${attribute}]`));
   }
   
-  if (action === 'init' && scripts.length > 0) {
-    console.log(`🚀 Executed ${scripts.length} custom scripts`);
-  }
+  console.log(`📦 Executing ${scripts.length} custom scripts`);
   
-  scripts.forEach((script) => {
+  scripts.forEach((script, index) => {
+    // Create unique identifier for each script
+    const scriptId = `${action}_${index}_${script.textContent.slice(0, 50).replace(/\s+/g, '_')}`;
+    
+    // Check if script is already initialized (generic guard)
+    if (window.instanceRegistry.isScriptInitialized(scriptId)) {
+      console.log(`⏭️ Skipping already initialized script: ${scriptId}`);
+      return;
+    }
+    
+    // Mark script as initialized
+    window.instanceRegistry.markScriptInitialized(scriptId);
+    
     try {
       // Execute the script content
       const scriptContent = script.textContent || script.innerText;
@@ -569,9 +622,10 @@ function executeCustomScripts(action = 'init', htmlString = null) {
         newScript.textContent = wrappedScript;
         document.head.appendChild(newScript);
         document.head.removeChild(newScript);
+        console.log(`✅ Executed script: ${scriptId}`);
       }
     } catch (error) {
-      console.error(`Failed to execute ${action} script:`, error);
+      console.error(`❌ Error executing script: ${scriptId}`, error);
     }
   });
 }
@@ -579,18 +633,15 @@ function executeCustomScripts(action = 'init', htmlString = null) {
 /**
  * Extract and inject custom CSS by data attribute
  * Looks for style tags with data-barba-css attribute
- * Can extract CSS from HTML string or current document
  */
 function executeCustomCSS(htmlString = null) {
   let styles = [];
   
   if (htmlString) {
-    // Extract CSS from HTML string (for page transitions)
     const parser = new DOMParser();
     const doc = parser.parseFromString(htmlString, 'text/html');
     styles = Array.from(doc.querySelectorAll('style[data-barba-css]'));
   } else {
-    // Use current document (for first page load)
     styles = Array.from(document.querySelectorAll('style[data-barba-css]'));
   }
   
@@ -598,10 +649,8 @@ function executeCustomCSS(htmlString = null) {
   
   styles.forEach((style) => {
     try {
-      // Get the CSS content
       const cssContent = style.textContent || style.innerText;
       if (cssContent.trim()) {
-        // Create a new style element and inject it
         const newStyle = document.createElement('style');
         newStyle.textContent = cssContent;
         newStyle.setAttribute('data-barba-injected', 'true');
@@ -620,54 +669,15 @@ function executeCustomCSS(htmlString = null) {
 
 /**
  * Remove injected CSS styles
- * Cleans up CSS that was injected via data-barba-css
  */
 function removeCustomCSS() {
   const injectedStyles = document.querySelectorAll('style[data-barba-injected="true"]');
-  
-  injectedStyles.forEach((style) => {
-    try {
-      style.remove();
-    } catch (error) {
-      console.error('Failed to remove CSS style:', error);
-    }
-  });
+  injectedStyles.forEach((style) => style.remove());
 }
 
-/**
- * Initialize custom scripts for the current page
- */
-function initCustomScripts() {
-  executeCustomScripts('init');
-}
-
-/**
- * Initialize custom CSS for the current page
- */
-function initCustomCSS() {
-  executeCustomCSS();
-}
-
-/**
- * Destroy/cleanup custom scripts for the current page
- */
-function destroyCustomScripts() {
-  executeCustomScripts('destroy');
-}
-
-/**
- * Remove custom CSS for the current page
- */
-function destroyCustomCSS() {
-  removeCustomCSS();
-}
-
-// Make functions globally available
-window.initCustomScripts = initCustomScripts;
-window.destroyCustomScripts = destroyCustomScripts;
+// Make essential functions globally available
+window.loadAssetsFromHTML = loadAssetsFromHTML;
 window.executeCustomScripts = executeCustomScripts;
-window.initCustomCSS = initCustomCSS;
-window.destroyCustomCSS = destroyCustomCSS;
 window.executeCustomCSS = executeCustomCSS;
 window.removeCustomCSS = removeCustomCSS;
 
@@ -761,6 +771,30 @@ window.removeCustomCSS = removeCustomCSS;
   const REVEAL_EASE = 'Expo.Out';   // Easing for enter/reveal animations
 
   /**
+   * Calculate dynamic transform origin based on viewport center
+   * Returns transform origin as percentage string (e.g., "50% 30%")
+   * @param {Element} element - The element to calculate transform origin for
+   * @returns {string} - Transform origin as percentage (e.g., "50% 30%")
+   */
+  function calculateViewportCenterTransformOrigin(element) {
+    if (!element) return 'center center';
+    
+    const rect = element.getBoundingClientRect();
+    const viewportCenterX = window.innerWidth / 2;
+    const viewportCenterY = window.innerHeight / 2;
+    
+    // Calculate intersection point between element and viewport center
+    const intersectionX = Math.max(0, Math.min(rect.width, viewportCenterX - rect.left));
+    const intersectionY = Math.max(0, Math.min(rect.height, viewportCenterY - rect.top));
+    
+    // Convert to percentage
+    const originX = (intersectionX / rect.width) * 100;
+    const originY = (intersectionY / rect.height) * 100;
+    
+    return `${originX}% ${originY}%`;
+  }
+
+  /**
    * Trigger a same-page transition for visual consistency
    * Runs the exit animation then immediately the enter animation
    */
@@ -813,8 +847,9 @@ window.removeCustomCSS = removeCustomCSS;
     
     // Animate current container out (blur + move up + scale down) if it exists
     if (container) {
-      // Set transform origin to top center for scaling
-      window.gsap.set(container, { transformOrigin: 'top center' });
+      // Set dynamic transform origin based on viewport center
+      const dynamicOrigin = calculateViewportCenterTransformOrigin(container);
+      window.gsap.set(container, { transformOrigin: dynamicOrigin });
       
       // Disable pointer events during transition
       container.style.pointerEvents = 'none';
@@ -836,7 +871,7 @@ window.removeCustomCSS = removeCustomCSS;
         ease: COVER_EASE 
       }, 0)
       .to(container, { 
-        y: '-2rem', 
+        y: '-1rem', 
         duration: 0.6, 
         ease: COVER_EASE 
       }, 0);
@@ -854,13 +889,14 @@ window.removeCustomCSS = removeCustomCSS;
     if (!container) return;
     
     // Set initial state for new container
+    const dynamicOrigin = calculateViewportCenterTransformOrigin(container);
     window.gsap.set(container, { 
       visibility: 'visible',
       opacity: 0,
-      y: '-2rem',
+      y: '-1rem',
       filter: 'blur(10px)',
       scale: 0.95,
-      transformOrigin: 'top center'
+      transformOrigin: dynamicOrigin
     });
     
     container.style.pointerEvents = 'none';
@@ -1111,8 +1147,13 @@ function start() {
           window.setInitialTheme?.();
           
           window.cleanupThemeSwitching?.();
-          window.destroyCustomScripts?.();
-          window.destroyCustomCSS?.();
+          
+          // Automatic cleanup of all registered instances
+          window.instanceRegistry.destroyAll();
+          
+          // Execute destroy scripts (for any manual cleanup)
+          window.executeCustomScripts?.('destroy');
+          window.removeCustomCSS?.();
         },
 
         async beforeEnter({ next, trigger }) {
@@ -1141,11 +1182,18 @@ function start() {
             const html = await response.text();
             await window.loadAssetsFromHTML?.(html);
             await window.executeCustomCSS?.(html);
+            
+            // Add small delay for page transitions to ensure DOM is ready
+            await new Promise(r => setTimeout(r, 50));
             await window.executeCustomScripts?.('init', html);
           } catch (error) {
-            window.initCustomCSS?.();
-            window.initCustomScripts?.();
+            window.executeCustomCSS?.();
+            await new Promise(r => setTimeout(r, 50));
+            window.executeCustomScripts?.('init');
           }
+          
+          // Run widow fix before content is revealed to prevent flash
+          window.runWidowFix?.();
         },
 
         async enter({ next, trigger }) {
@@ -1188,7 +1236,6 @@ function start() {
           window.initAutoplayVideos?.();
           window.initVideoOnScrollModule?.();
           window.initMessageToggle?.();
-          window.runWidowFix?.();
           window.reinitializePageLibraries?.(); // Reinitialize page-specific libraries
           
           // Simple script reinitialization - the standard Barba.js approach
@@ -1247,9 +1294,11 @@ function start() {
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
           window.initVideoOnScrollModule?.();
-          window.runWidowFix?.();
           window.initThemeSwitching?.(); // Initialize theme switching on first load
           window.initializePageLibraries?.(); // Initialize page-specific libraries on first load
+          
+          // Run widow fix after all content is ready
+          window.runWidowFix?.();
 
           try { window.ScrollTrigger.refresh(); } catch (e) {}
           
@@ -1498,8 +1547,8 @@ window.Webflow?.push(function() {
       await window.executeCustomCSS?.(html);
     } catch (error) {
       // Fallback to current document
-      window.initCustomScripts?.();
-      window.initCustomCSS?.();
+      window.executeCustomScripts?.('init');
+      window.executeCustomCSS?.();
     }
   }, 100);
 });
@@ -1630,14 +1679,28 @@ window.cleanupThemeSwitching = cleanupThemeSwitching;
 function revealOnInitialLoad(container) {
   if (!container || !window.gsap) return;
   
+  // Calculate dynamic transform origin based on viewport center
+  const rect = container.getBoundingClientRect();
+  const viewportCenterX = window.innerWidth / 2;
+  const viewportCenterY = window.innerHeight / 2;
+  
+  // Calculate intersection point between element and viewport center
+  const intersectionX = Math.max(0, Math.min(rect.width, viewportCenterX - rect.left));
+  const intersectionY = Math.max(0, Math.min(rect.height, viewportCenterY - rect.top));
+  
+  // Convert to percentage
+  const originX = (intersectionX / rect.width) * 100;
+  const originY = (intersectionY / rect.height) * 100;
+  const dynamicOrigin = `${originX}% ${originY}%`;
+  
   window.gsap.set(container, {
     display: 'block',
     visibility: 'visible',
     opacity: 0,
-    y: '-2.5rem',
+    y: '-1rem',
     filter: 'blur(10px)',
-    scale: 0.90,
-    transformOrigin: 'top center'
+    scale: 0.94,
+    transformOrigin: dynamicOrigin
   });
   
   container.style.pointerEvents = 'none';
@@ -1684,7 +1747,7 @@ function initPageLoader() {
   // Setup
   loader.style.setProperty('display', 'block', 'important');
   gsap.set(loader, { top: '0%' });
-  gsap.set(loaderContent, { opacity: 0, y: '2.5rem', filter: 'blur(10px)' });
+  gsap.set(loaderContent, { opacity: 0, y: '1rem', filter: 'blur(10px)' });
   if (container) gsap.set(container, { display: 'none' });
   
   // Play Lottie animation after delay
