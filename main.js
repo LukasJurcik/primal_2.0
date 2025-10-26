@@ -288,119 +288,6 @@ function stopAllVideoOnScroll() {
 }
 window.stopAllVideoOnScroll = stopAllVideoOnScroll;
 
-/**
- * Initialize reel overlay hover functionality
- * Shows overlay and plays video on hover for elements with reel-overlay-trigger
- */
-function initReelOverlayModule() {
-  // Check if device supports hover (not touch devices)
-  if (!window.matchMedia('(hover: hover)').matches) {
-    return;
-  }
-  
-  const triggers = document.querySelectorAll('[reel-overlay-trigger="true"]');
-  
-  triggers.forEach((trigger) => {
-    if (trigger.dataset.reelOverlayBound === '1') {
-      return;
-    }
-    
-    const overlay = document.querySelector('[reel-overlay-target="true"]');
-    if (!overlay) return;
-    
-    const specialHoverWrapper = overlay.querySelector('[special-hover="true"][data-video-on-hover="true"]');
-    if (!specialHoverWrapper) return;
-    
-    const video = specialHoverWrapper.querySelector('video');
-    if (!video) return;
-    
-    // Set up video properties
-    video.muted = true;
-    video.playsInline = true;
-    
-    // Set overlay to display: block and visibility: visible but keep it hidden with opacity (preserves fixed positioning)
-    overlay.style.display = 'block';
-    overlay.style.visibility = 'visible';
-    overlay.style.opacity = '0';
-    
-    let isHovering = false;
-    let unloadTimer = null;
-    
-    const onEnter = () => {
-      if (isHovering) return;
-      isHovering = true;
-      
-      // Clear any pending unload
-      if (unloadTimer) {
-        clearTimeout(unloadTimer);
-        unloadTimer = null;
-      }
-      
-      // Show overlay with CSS transition
-      overlay.style.opacity = '1';
-      
-      // Check if video needs to load source first
-      const dataSrc = video.getAttribute('data-video-src');
-      if (dataSrc && !video.src) {
-        video.src = dataSrc;
-      }
-      
-      try {
-        video.currentTime = 0;
-        video.play();
-      } catch (e) {
-        // Silent fail
-      }
-    };
-    
-    const onLeave = () => {
-      if (!isHovering) return;
-      isHovering = false;
-      
-      // Hide overlay with CSS transition
-      overlay.style.opacity = '0';
-      
-      // Wait for CSS transition to complete (300ms) before pausing video
-      setTimeout(() => {
-        try {
-          video.pause();
-          video.currentTime = 0;
-        } catch (e) {
-          // Silent fail
-        }
-      }, 300);
-    };
-    
-    // Add event listeners
-    trigger.addEventListener('mouseenter', onEnter);
-    trigger.addEventListener('mouseleave', onLeave);
-    
-    // Keep overlay visible when hovering over it (but don't control video)
-    overlay.addEventListener('mouseenter', () => {
-      if (isHovering) return;
-      onEnter();
-    });
-    
-    overlay.addEventListener('mouseleave', onLeave);
-    
-    // Mark as bound
-    trigger.dataset.reelOverlayBound = '1';
-  });
-}
-
-/**
- * Stop all reel overlay videos
- */
-function stopAllReelOverlays() {
-  document.querySelectorAll('[reel-overlay-target="true"] [special-hover="true"][data-video-on-hover="true"] video').forEach(v => { 
-    try { 
-      v.pause(); 
-      v.currentTime = 0;
-    } catch (e) {} 
-  });
-}
-window.initReelOverlayModule = initReelOverlayModule;
-window.stopAllReelOverlays = stopAllReelOverlays;
 
 // ============================================
 // LENIS INITIALIZATION
@@ -674,6 +561,7 @@ window.instanceRegistry = {
     this.initializedScripts.clear();
     // Reset specific script flags
     window.macyInitialized = false;
+    window.reelOverlayInitialized = false;
     console.log(`🔄 Reset all script initialization flags`);
   }
 };
@@ -701,10 +589,11 @@ function executeCustomScripts(action = 'init', htmlString = null) {
   console.log(`📦 Executing ${scripts.length} custom scripts`);
   
   scripts.forEach((script, index) => {
-    // Create unique identifier for each script
-    const scriptId = `${action}_${index}_${script.textContent.slice(0, 50).replace(/\s+/g, '_')}`;
+    // Simple ID generation: action + index + first 20 chars of content
+    const content = script.textContent || script.innerText || '';
+    const scriptId = `${action}_${index}_${content.slice(0, 20).replace(/\s/g, '')}`;
     
-    // Check if script is already initialized (generic guard)
+    // Check if script is already initialized
     if (window.instanceRegistry.isScriptInitialized(scriptId)) {
       console.log(`⏭️ Skipping already initialized script: ${scriptId}`);
       return;
@@ -1244,7 +1133,6 @@ function start() {
           window.stopAllHoverVideos?.();
           window.stopAllAutoplayVideos?.();
           window.stopAllVideoOnScroll?.();
-          window.stopAllReelOverlays?.();
           window.cleanupPageLibraries?.();
           
           await coverFromBottom(current?.container);
@@ -1253,7 +1141,19 @@ function start() {
         async afterLeave({ current }) {
           // Remove scroll lock and hide old container
           window.barbaScrollLockCleanup?.();
-          if (current?.container && window.gsap) window.gsap.set(current.container, { display: 'none' });
+          if (current?.container && window.gsap) {
+            // Clear transforms that break position: fixed from both wrapper and container
+            const wrapper = document.querySelector('[data-barba="wrapper"]');
+            if (wrapper) {
+              window.gsap.set(wrapper, { 
+                clearProps: 'filter,scale,y,transform,transformOrigin,will-change'
+              });
+            }
+            window.gsap.set(current.container, { 
+              display: 'none',
+              clearProps: 'filter,scale,y,transform,transformOrigin,will-change'
+            });
+          }
           
           // Scroll to top (invisible while page is covered) unless hash navigation
           if (!window.barbaNavigationHash) window.scrollTo(0, 0);
@@ -1347,10 +1247,24 @@ function start() {
           reinitIXStable();
           installLenisScrollTriggerBridge();
 
+          // Clear any lingering transforms on both wrapper and container that break position: fixed
+          if (window.gsap) {
+            const wrapper = document.querySelector('[data-barba="wrapper"]');
+            if (wrapper) {
+              window.gsap.set(wrapper, { 
+                clearProps: 'filter,scale,y,transform,transformOrigin,will-change'
+              });
+            }
+            if (next?.container) {
+              window.gsap.set(next.container, { 
+                clearProps: 'filter,scale,y,transform,transformOrigin,will-change'
+              });
+            }
+          }
+
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
           window.initVideoOnScrollModule?.();
-          window.initReelOverlayModule?.();
           window.initMessageToggle?.();
           window.reinitializePageLibraries?.(); // Reinitialize page-specific libraries
           
@@ -1410,7 +1324,6 @@ function start() {
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
           window.initVideoOnScrollModule?.();
-          window.initReelOverlayModule?.();
           window.initThemeSwitching?.(); // Initialize theme switching on first load
           window.initializePageLibraries?.(); // Initialize page-specific libraries on first load
           
