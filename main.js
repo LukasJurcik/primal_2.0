@@ -844,6 +844,7 @@ window.removeCustomCSS = removeCustomCSS;
    */
   const coverFromBottom = async (currentContainer = null) => {
     const container = currentContainer || document.querySelector('[data-barba="container"]');
+    const footer = document.getElementById('site-footer');
     if (!container) return;
     
     const tl = window.gsap.timeline();
@@ -880,6 +881,20 @@ window.removeCustomCSS = removeCustomCSS;
       }, 0);
     }
     
+    // Animate footer out with opacity and blur (no scale)
+    if (footer) {
+      tl.to(footer, { 
+        opacity: 0, // Fade out
+        duration: 0.6, 
+        ease: COVER_EASE 
+      }, 0)
+      .to(footer, { 
+        filter: 'blur(10px)', // Add blur effect
+        duration: 0.4, 
+        ease: COVER_EASE 
+      }, 0);
+    }
+    
     await tl;
   };
 
@@ -889,6 +904,7 @@ window.removeCustomCSS = removeCustomCSS;
    */
   const revealToTop = async (nextContainer = null) => {
     const container = nextContainer || document.querySelector('[data-barba="container"]');
+    const footer = document.getElementById('site-footer');
     if (!container) return;
     
     // Set initial state for new container
@@ -903,6 +919,14 @@ window.removeCustomCSS = removeCustomCSS;
     });
     
     container.style.pointerEvents = 'none';
+    
+    // Set initial state for footer
+    if (footer) {
+      window.gsap.set(footer, { 
+        opacity: 0,
+        filter: 'blur(10px)'
+      });
+    }
     
     // Create timeline for synchronized animations
     const tl = window.gsap.timeline();
@@ -931,6 +955,20 @@ window.removeCustomCSS = removeCustomCSS;
     .call(() => {
       container.style.pointerEvents = '';
     });
+    
+    // Animate footer in with opacity and blur (no scale)
+    if (footer) {
+      tl.to(footer, { 
+        opacity: 1,
+        duration: 0.6, 
+        ease: REVEAL_EASE
+      }, 0)
+      .to(footer, { 
+        filter: 'blur(0px)',
+        duration: 0.4, 
+        ease: REVEAL_EASE 
+      }, 0.1);
+    }
     
     await tl;
   };
@@ -1155,6 +1193,14 @@ function start() {
             });
           }
           
+          // Clear footer transforms
+          const footer = document.getElementById('site-footer');
+          if (footer && window.gsap) {
+            window.gsap.set(footer, { 
+              clearProps: 'filter,opacity,transform,transformOrigin,will-change'
+            });
+          }
+          
           // Scroll to top (invisible while page is covered) unless hash navigation
           if (!window.barbaNavigationHash) window.scrollTo(0, 0);
           
@@ -1185,6 +1231,16 @@ function start() {
               display: 'block',
               opacity: 0,
               visibility: 'hidden'
+            });
+          }
+          
+          // Set initial state for footer immediately
+          // This prevents it from being briefly visible before the transition
+          const footer = document.getElementById('site-footer');
+          if (footer && window.gsap) {
+            window.gsap.set(footer, { 
+              opacity: 0,
+              filter: 'blur(10px)'
             });
           }
 
@@ -1260,6 +1316,14 @@ function start() {
                 clearProps: 'filter,scale,y,transform,transformOrigin,will-change'
               });
             }
+            
+            // Clear footer transforms
+            const footer = document.getElementById('site-footer');
+            if (footer) {
+              window.gsap.set(footer, { 
+                clearProps: 'filter,opacity,transform,transformOrigin,will-change'
+              });
+            }
           }
 
           window.initVideoHoverModule?.();
@@ -1310,6 +1374,15 @@ function start() {
                   visibility: 'visible'
                 });
               }
+              
+              // Ensure footer is visible on initial load
+              const footer = document.getElementById('site-footer');
+              if (footer) {
+                window.gsap.set(footer, {
+                  opacity: 1,
+                  filter: 'blur(0px)'
+                });
+              }
             } catch (error) {
               console.error('❌ GSAP reveal failed in once hook, showing content anyway:', error);
               // Fallback: show content immediately
@@ -1318,6 +1391,13 @@ function start() {
                 c.style.visibility = 'visible';
                 c.style.opacity = '1';
               });
+              
+              // Fallback for footer
+              const footer = document.getElementById('site-footer');
+              if (footer) {
+                footer.style.opacity = '1';
+                footer.style.filter = 'blur(0px)';
+              }
             }
           }
 
@@ -1380,6 +1460,15 @@ function start() {
         });
       }
       
+      // Ensure footer is visible on initial load
+      const footer = document.getElementById('site-footer');
+      if (footer) {
+        window.gsap.set(footer, {
+          opacity: 1,
+          filter: 'blur(0px)'
+        });
+      }
+      
       // Ensure initial state is set
       resetTransitionState();
     } catch (error) {
@@ -1390,6 +1479,13 @@ function start() {
         c.style.visibility = 'visible';
         c.style.opacity = '1';
       });
+      
+      // Fallback for footer
+      const footer = document.getElementById('site-footer');
+      if (footer) {
+        footer.style.opacity = '1';
+        footer.style.filter = 'blur(0px)';
+      }
     }
   } else {
     document.documentElement.classList.add('gsap-not-found');

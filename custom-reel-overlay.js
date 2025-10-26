@@ -35,18 +35,65 @@
       // Set up video properties
       video.muted = true;
       video.playsInline = true;
+      video.preload = 'auto';
       
       // Set overlay to display: block and visibility: visible but keep it hidden with opacity (preserves fixed positioning)
       overlay.style.display = 'block';
       overlay.style.visibility = 'visible';
       overlay.style.opacity = '0';
       
-      let isHovering = false;
+      let hoverCount = 0;
+      let playPromise = null;
       let unloadTimer = null;
       
+      const startPlaying = () => {
+        // Check if video needs to load source first
+        const dataSrc = video.getAttribute('data-video-src');
+        if (dataSrc && !video.src) {
+          video.src = dataSrc;
+        }
+        
+        try {
+          // Reset video to start
+          video.currentTime = 0;
+          
+          // Play the video
+          playPromise = video.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(() => {
+              // Auto-play was prevented, try again after a brief delay
+              setTimeout(() => {
+                try {
+                  playPromise = video.play();
+                } catch (e) {
+                  // Silent fail
+                }
+              }, 50);
+            });
+          }
+        } catch (e) {
+          // Silent fail
+        }
+      };
+      
+      const stopPlaying = () => {
+        try {
+          // Cancel any pending play
+          if (playPromise && typeof playPromise.cancel === 'function') {
+            playPromise.cancel();
+          }
+          
+          // Pause the video
+          video.pause();
+          video.currentTime = 0;
+          playPromise = null;
+        } catch (e) {
+          // Silent fail
+        }
+      };
+      
       const onEnter = () => {
-        if (isHovering) return;
-        isHovering = true;
+        hoverCount++;
         
         // Clear any pending unload
         if (unloadTimer) {
@@ -57,48 +104,32 @@
         // Show overlay with CSS transition
         overlay.style.opacity = '1';
         
-        // Check if video needs to load source first
-        const dataSrc = video.getAttribute('data-video-src');
-        if (dataSrc && !video.src) {
-          video.src = dataSrc;
-        }
-        
-        try {
-          video.currentTime = 0;
-          video.play();
-        } catch (e) {
-          // Silent fail
+        // Start playing if not already playing
+        if (hoverCount === 1) {
+          startPlaying();
         }
       };
       
       const onLeave = () => {
-        if (!isHovering) return;
-        isHovering = false;
+        hoverCount--;
+        
+        // If we're still hovering (either trigger or overlay), don't stop
+        if (hoverCount > 0) return;
         
         // Hide overlay with CSS transition
         overlay.style.opacity = '0';
         
-        // Wait for CSS transition to complete (300ms) before pausing video
-        setTimeout(() => {
-          try {
-            video.pause();
-            video.currentTime = 0;
-          } catch (e) {
-            // Silent fail
-          }
+        // Wait for CSS transition to complete (300ms) before stopping video
+        unloadTimer = setTimeout(() => {
+          stopPlaying();
+          unloadTimer = null;
         }, 300);
       };
       
       // Add event listeners
       trigger.addEventListener('mouseenter', onEnter);
       trigger.addEventListener('mouseleave', onLeave);
-      
-      // Keep overlay visible when hovering over it (but don't control video)
-      overlay.addEventListener('mouseenter', () => {
-        if (isHovering) return;
-        onEnter();
-      });
-      
+      overlay.addEventListener('mouseenter', onEnter);
       overlay.addEventListener('mouseleave', onLeave);
       
       // Mark as bound
