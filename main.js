@@ -61,12 +61,135 @@ function installLenisScrollTriggerBridge() {
 window.installLenisScrollTriggerBridge = installLenisScrollTriggerBridge;
 
 // ============================================
-// VIDEO MODULES
+// VIDEO MANAGER - CORE UTILITIES
 // ============================================
+// Copy this entire section to use video functionality in other projects
+
+/**
+ * Unified Video Manager
+ * Handles all video functionality with common utilities
+ * 
+ * Usage:
+ * 1. Include this VideoManager class
+ * 2. Include the specific video modules you need (hover, autoplay, scroll)
+ * 3. Call the init functions: initVideoHoverModule(), initAutoplayVideos(), initVideoOnScrollModule()
+ */
+class VideoManager {
+  constructor() {
+    this.videos = new Map();
+    this.observers = new Map();
+    this.timers = new Map();
+  }
+
+  // Common video setup
+  setupVideo(video, options = {}) {
+    video.muted = true;
+    video.playsInline = true;
+    
+    if (options.src && !video.getAttribute('src')) {
+      video.setAttribute('src', options.src);
+    }
+  }
+
+  // Safe video operations
+  async playVideo(video) {
+    try {
+      await video.play();
+      return true;
+    } catch (error) {
+      console.warn('Video play blocked:', error);
+      return false;
+    }
+  }
+
+  pauseVideo(video) {
+    try {
+      video.pause();
+    } catch (error) {
+      console.warn('Video pause error:', error);
+    }
+  }
+
+  // Common video finding logic
+  findVideo(wrapper, className = null) {
+    if (className) {
+      return wrapper.querySelector(className) || wrapper.querySelector('video');
+    }
+    return wrapper.querySelector('.video-card-hover__video') || 
+           wrapper.querySelector('.video-scroll__video') || 
+           wrapper.querySelector('video');
+  }
+
+  // Get video source
+  getVideoSrc(wrapper, video) {
+    return (video && video.getAttribute('data-video-src')) || wrapper.getAttribute('data-video-src');
+  }
+
+  // Reset video to beginning
+  resetVideoTime(video) {
+    try {
+      video.currentTime = 0;
+    } catch (e) {}
+  }
+
+  // Unload video safely
+  unloadVideo(video) {
+    video.removeAttribute('src');
+    try {
+      video.load();
+    } catch (e) {}
+  }
+
+  // Clear timer safely
+  clearTimer(key) {
+    const timer = this.timers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.timers.delete(key);
+    }
+  }
+
+  // Set timer safely
+  setTimer(key, callback, delay) {
+    this.clearTimer(key);
+    const timer = setTimeout(() => {
+      callback();
+      this.timers.delete(key);
+    }, delay);
+    this.timers.set(key, timer);
+  }
+
+  // Check if element is in viewport
+  inViewport(el) {
+    const r = el.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    const vw = window.innerWidth || document.documentElement.clientWidth;
+    return r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw;
+  }
+
+  // Simple cleanup
+  cleanup() {
+    this.timers.forEach(timer => clearTimeout(timer));
+    this.timers.clear();
+  }
+}
+
+// Global video manager instance
+window.videoManager = new VideoManager();
+
+// ============================================
+// VIDEO HOVER MODULE
+// ============================================
+// Copy this section for hover video functionality
 
 /**
  * Initialize video hover functionality
  * Plays videos on hover/touch for elements with data-video-on-hover
+ * 
+ * HTML Usage:
+ * <div data-video-on-hover data-video-src="video.mp4">
+ *   <video class="video-card-hover__video"></video>
+ * </div>
  */
 function initVideoHoverModule() {
   console.log('🎥 Initializing video hover functionality...');
@@ -74,33 +197,30 @@ function initVideoHoverModule() {
   wrappers.forEach((wrapper) => {
     if (wrapper.dataset.videoHoverBound === '1') return;
 
-    const video = wrapper.querySelector('.video-card-hover__video') || wrapper.querySelector('video');
-    const src = (video && video.getAttribute('data-video-src')) || wrapper.getAttribute('data-video-src');
+    const video = window.videoManager.findVideo(wrapper, '.video-card-hover__video');
+    const src = window.videoManager.getVideoSrc(wrapper, video);
     if (!video || !src) return;
 
-    video.muted = true;
-    video.playsInline = true;
+    window.videoManager.setupVideo(video);
 
-    let unloadTimer = null;
+    const timerKey = `hover-${Math.random()}`;
 
     const onEnter = () => {
-      if (unloadTimer) { clearTimeout(unloadTimer); unloadTimer = null; }
+      window.videoManager.clearTimer(timerKey);
       if (!video.getAttribute('src')) video.setAttribute('src', src);
-      try { video.currentTime = 0; } catch (e) {}
-      video.play().catch(() => {});
+      window.videoManager.resetVideoTime(video);
+      window.videoManager.playVideo(video);
       wrapper.dataset.videoOnHover = 'active';
     };
 
     const onLeave = () => {
-      try { video.pause(); } catch (e) {}
+      window.videoManager.pauseVideo(video);
       wrapper.dataset.videoOnHover = 'not-active';
-      unloadTimer = setTimeout(() => {
-        video.removeAttribute('src');
-        try { video.load(); } catch (e) {}
-        unloadTimer = null;
+      window.videoManager.setTimer(timerKey, () => {
+        window.videoManager.unloadVideo(video);
       }, 250);
     };
-
+    
     wrapper.addEventListener('mouseenter', onEnter);
     wrapper.addEventListener('mouseleave', onLeave);
     wrapper.addEventListener('touchstart', onEnter, { passive: true });
@@ -116,21 +236,28 @@ window.initVideoHoverModule = initVideoHoverModule;
  */
 function stopAllHoverVideos() {
   document.querySelectorAll('[data-video-on-hover] video').forEach(v => { 
-    try { v.pause(); } catch (e) {} 
+    window.videoManager.pauseVideo(v);
   });
 }
 window.stopAllHoverVideos = stopAllHoverVideos;
 
+// ============================================
+// VIDEO AUTOPLAY MODULE
+// ============================================
+// Copy this section for autoplay video functionality
+
 /**
  * Initialize autoplay videos
  * Videos with data-video-autoplay will play when in viewport
+ * <div data-video-autoplay>
+ *   <video data-video-src="video.mp4"></video>
+ * </div>
  */
 function initAutoplayVideos() {
   console.log('▶️ Initializing autoplay videos...');
   const vids = document.querySelectorAll('[data-video-autoplay] video, video[data-video-autoplay]');
   vids.forEach(v => {
-    v.muted = true;
-    v.playsInline = true;
+    window.videoManager.setupVideo(v);
 
     // Lazy load if using data-video-src
     const ds = v.getAttribute('data-video-src');
@@ -139,7 +266,7 @@ function initAutoplayVideos() {
     if (v.dataset.autoplayBound === '1') return;
     v.dataset.autoplayBound = '1';
 
-    const tryPlay = () => v.play().catch(() => {});
+    const tryPlay = () => window.videoManager.playVideo(v);
 
     v.addEventListener('loadeddata', tryPlay, { passive: true });
     v.addEventListener('canplay', tryPlay, { passive: true });
@@ -148,9 +275,10 @@ function initAutoplayVideos() {
       const io = new window.IntersectionObserver(entries => {
         entries.forEach(e => {
           if (e.isIntersecting) tryPlay();
-          else { try { v.pause(); } catch (e) {} }
+          else window.videoManager.pauseVideo(v);
         });
       }, { threshold: 0.1 });
+      
       io.observe(v);
     } else {
       tryPlay();
@@ -164,26 +292,39 @@ window.initAutoplayVideos = initAutoplayVideos;
  */
 function stopAllAutoplayVideos() {
   document.querySelectorAll('[data-video-autoplay] video, video[data-video-autoplay]')
-    .forEach(v => { try { v.pause(); } catch (e) {} });
+    .forEach(v => window.videoManager.pauseVideo(v));
 }
 window.stopAllAutoplayVideos = stopAllAutoplayVideos;
 
+// ============================================
+// VIDEO SCROLL MODULE
+// ============================================
 /**
  * Preload video on scroll videos during page transition
  * Prevents flash when navigating to pages with videos in view
  */
 function preloadVideoOnScroll() {
+  // Preload scroll videos
   const wrappers = document.querySelectorAll('[data-video-on-scroll]');
   wrappers.forEach(wrapper => {
-    const video = wrapper.querySelector('.video-scroll__video') || wrapper.querySelector('video');
+    const video = window.videoManager.findVideo(wrapper, '.video-scroll__video');
     if (!video) return;
 
-    // Set video properties
-    video.muted = true;
-    video.playsInline = true;
+    window.videoManager.setupVideo(video);
 
-    // Preload immediately during transition
     const src = video.getAttribute('data-video-src');
+    if (src && !video.src) {
+      video.src = src;
+      video.load();
+    }
+  });
+
+  // Preload autoplay videos
+  const autoplayVids = document.querySelectorAll('[data-video-autoplay] video, video[data-video-autoplay]');
+  autoplayVids.forEach(video => {
+    window.videoManager.setupVideo(video);
+
+    const src = video.getAttribute('data-video-src') || video.getAttribute('src');
     if (src && !video.src) {
       video.src = src;
       video.load();
@@ -195,28 +336,24 @@ window.preloadVideoOnScroll = preloadVideoOnScroll;
 /**
  * Initialize video on scroll functionality
  * Videos with data-video-on-scroll will play when in viewport and pause when out
+ * HTML Usage:
+ * <div data-video-on-scroll>
+ *   <video class="video-scroll__video" data-video-src="video.mp4"></video>
+ * </div>
  */
 function initVideoOnScrollModule() {
   console.log('📹 Initializing video on scroll functionality...');
   const wrappers = document.querySelectorAll('[data-video-on-scroll]');
 
-  // Helper: check if element is visible in viewport
-  const inViewport = (el) => {
-    const r = el.getBoundingClientRect();
-    const vh = window.innerHeight || document.documentElement.clientHeight;
-    const vw = window.innerWidth || document.documentElement.clientWidth;
-    return r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw;
-  };
-
   // Helper: play video safely
   const playVideo = (wrapper, video) => {
     if (video.readyState >= 3) {
-      video.play().then(() => wrapper.dataset.state = 'active')
+      window.videoManager.playVideo(video).then(() => wrapper.dataset.state = 'active')
         .catch(err => console.warn('Video play blocked:', err));
     } else {
       const onCanPlay = () => {
         video.removeEventListener('canplay', onCanPlay);
-        video.play().then(() => wrapper.dataset.state = 'active')
+        window.videoManager.playVideo(video).then(() => wrapper.dataset.state = 'active')
           .catch(err => console.warn('Video play blocked:', err));
       };
       video.addEventListener('canplay', onCanPlay, { once: true });
@@ -225,14 +362,14 @@ function initVideoOnScrollModule() {
 
   // Helper: pause video
   const pauseVideo = (wrapper, video) => {
-    video.pause();
+    window.videoManager.pauseVideo(video);
     wrapper.dataset.state = 'inactive';
   };
 
   wrappers.forEach(wrapper => {
     if (wrapper.dataset.videoScrollBound === '1') return;
 
-    const video = wrapper.querySelector('.video-scroll__video') || wrapper.querySelector('video');
+    const video = window.videoManager.findVideo(wrapper, '.video-scroll__video');
     if (!video) return;
 
     // Play/pause observer
@@ -250,7 +387,7 @@ function initVideoOnScrollModule() {
     playIO.observe(wrapper);
 
     // Handle videos visible on first load
-    if (inViewport(wrapper)) {
+    if (window.videoManager.inViewport(wrapper)) {
       playVideo(wrapper, video);
     }
 
@@ -262,14 +399,14 @@ function initVideoOnScrollModule() {
     if (document.hidden) {
       // Pause all when tab hidden
       wrappers.forEach(wrapper => {
-        const video = wrapper.querySelector('.video-scroll__video') || wrapper.querySelector('video');
-        if (video) video.pause();
+        const video = window.videoManager.findVideo(wrapper, '.video-scroll__video');
+        if (video) window.videoManager.pauseVideo(video);
       });
     } else {
       // Resume any video that is in viewport
       wrappers.forEach(wrapper => {
-        const video = wrapper.querySelector('.video-scroll__video') || wrapper.querySelector('video');
-        if (video && inViewport(wrapper)) {
+        const video = window.videoManager.findVideo(wrapper, '.video-scroll__video');
+        if (video && window.videoManager.inViewport(wrapper)) {
           playVideo(wrapper, video);
         }
       });
@@ -283,7 +420,7 @@ window.initVideoOnScrollModule = initVideoOnScrollModule;
  */
 function stopAllVideoOnScroll() {
   document.querySelectorAll('[data-video-on-scroll] video').forEach(v => { 
-    try { v.pause(); } catch (e) {} 
+    window.videoManager.pauseVideo(v);
   });
 }
 window.stopAllVideoOnScroll = stopAllVideoOnScroll;
@@ -1171,6 +1308,7 @@ function start() {
           window.stopAllHoverVideos?.();
           window.stopAllAutoplayVideos?.();
           window.stopAllVideoOnScroll?.();
+          window.videoManager?.cleanup();
           window.cleanupPageLibraries?.();
           
           await coverFromBottom(current?.container);
@@ -1652,8 +1790,6 @@ window.Webflow?.push(function() {
  * Set initial theme instantly (called early in Barba lifecycle to prevent flash)
  */
 function setInitialTheme() {
-  const html = document.documentElement;
-  const body = document.body;
   const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
   
   // Determine theme based on page and special button flag
@@ -1661,10 +1797,11 @@ function setInitialTheme() {
   const isDark = isHomepage && !fromSpecialButton;
   
   // Set theme on both html and body using toggle for consistency
-  html.classList.toggle('theme-dark', isDark);
-  html.classList.toggle('theme-light', !isDark);
-  body.classList.toggle('theme-dark', isDark);
-  body.classList.toggle('theme-light', !isDark);
+  const elems = [document.documentElement, document.body];
+  elems.forEach(el => {
+    el.classList.toggle('theme-dark', isDark);
+    el.classList.toggle('theme-light', !isDark);
+  });
   
   // Cleanup flags
   if (fromSpecialButton) {
@@ -1676,71 +1813,72 @@ function setInitialTheme() {
 /**
  * Theme switching: Sets up scroll-based theme observer on homepage
  * Switches theme when [light-mode-trigger] enters/leaves viewport
+ * Optimized for mobile devices to prevent flickering
  */
 function initThemeSwitching() {
   const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
-  
-  // Only setup observer on homepage
   if (!isHomepage) return;
   
   const trigger = document.querySelector('[light-mode-trigger]');
   if (!trigger) return;
   
-  // Add smooth transition styles once
-  if (!document.getElementById('theme-transition-styles')) {
-    const style = document.createElement('style');
-    style.id = 'theme-transition-styles';
-    style.textContent = `
-      html.theme-transitioning,
-      html.theme-transitioning *,
-      body.theme-transitioning,
-      body.theme-transitioning * {
-        transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, fill 0.3s ease, stroke 0.3s ease;
-      }
-    `;
-    document.head.appendChild(style);
-  }
+  // Detect mobile device for optimized behavior
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                  window.innerWidth <= 768;
+  
+  // Debounce function to prevent rapid theme changes
+  let debounceTimer = null;
+  const debounce = (func, delay) => {
+    return (...args) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => func(...args), delay);
+    };
+  };
   
   // Helper to set theme with smooth transition
   const setTheme = (isDark) => {
-    const html = document.documentElement;
-    const body = document.body;
+    const elems = [document.documentElement, document.body];
     
-    html.classList.add('theme-transitioning');
-    body.classList.add('theme-transitioning');
+    elems.forEach(el => {
+      el.classList.add('theme-transitioning');
+      el.classList.toggle('theme-dark', isDark);
+      el.classList.toggle('theme-light', !isDark);
+    });
     
-    html.classList.toggle('theme-dark', isDark);
-    html.classList.toggle('theme-light', !isDark);
-    body.classList.toggle('theme-dark', isDark);
-    body.classList.toggle('theme-light', !isDark);
-    
+    // Shorter timeout on mobile for better performance
     setTimeout(() => {
-      html.classList.remove('theme-transitioning');
-      body.classList.remove('theme-transitioning');
-    }, 300);
+      elems.forEach(el => el.classList.remove('theme-transitioning'));
+    }, isMobile ? 200 : 300);
   };
   
-  // Track current theme state (read from body classes)
+  // Debounced theme setter - longer delay on mobile to prevent flickering
+  const debouncedSetTheme = debounce(setTheme, isMobile ? 150 : 100);
+  
+  // Track current theme state
   let isDark = document.body.classList.contains('theme-dark');
   
   // Enable observer only after user scrolls
-  let hasScrolled = false;
-  const onScroll = () => {
+  const handleScroll = () => {
     hasScrolled = true;
-    window.removeEventListener('scroll', onScroll);
+    window.removeEventListener('scroll', handleScroll);
   };
-  window.addEventListener('scroll', onScroll, { passive: true });
+  let hasScrolled = false;
+  window.addEventListener('scroll', handleScroll, { passive: true });
   
   // Watch trigger and switch theme when it enters/leaves viewport
+  const observerOptions = isMobile 
+    ? { threshold: 0.5 }
+    : { threshold: [0, 0.5, 1] };
+  
   const observer = new IntersectionObserver(([entry]) => {
     if (!hasScrolled) return;
     
     const shouldBeDark = entry.isIntersecting;
     if (shouldBeDark !== isDark) {
       isDark = shouldBeDark;
-      setTheme(isDark);
+      debouncedSetTheme(isDark);
     }
-  }, { threshold: [0, 0.5, 1] });
+  }, observerOptions);
   
   observer.observe(trigger);
   
