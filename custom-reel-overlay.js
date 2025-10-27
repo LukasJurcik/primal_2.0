@@ -15,6 +15,21 @@
       trigger.dataset.reelOverlayBound = '0';
     });
     
+    // Simple global click handler to close overlay on any link click (fixes Safari bug)
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('a[href]')) {
+        // Close all overlays immediately
+        document.querySelectorAll('[reel-overlay-target="true"]').forEach(overlay => {
+          overlay.style.opacity = '0';
+          const video = overlay.querySelector('video');
+          if (video) {
+            video.pause();
+            video.currentTime = 0;
+          }
+        });
+      }
+    }, true);
+    
     triggers.forEach((trigger) => {
       if (trigger.dataset.reelOverlayBound === '1') return;
       
@@ -138,11 +153,10 @@
   }
   
   function stopAllReelOverlays() {
-    document.querySelectorAll('[reel-overlay-target="true"] [special-hover="true"][data-video-on-hover="true"] video').forEach(v => { 
-      try { 
-        v.pause(); 
-        v.currentTime = 0;
-      } catch (e) {} 
+    // Stop all videos
+    document.querySelectorAll('[reel-overlay-target="true"] video').forEach(v => { 
+      v.pause(); 
+      v.currentTime = 0;
     });
   }
   
