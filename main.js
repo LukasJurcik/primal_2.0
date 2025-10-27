@@ -1958,34 +1958,12 @@ function initPageLoader() {
   }, 5000);
   
   const loaderContent = loader.querySelector('.loader-content_wrapper');
-  const lottieElement = loader.querySelector('.lottie-animation-json');
   
-  // Setup
+  // Setup - don't touch the Lottie element, preload-lottie.js handles it
   loader.style.setProperty('display', 'block', 'important');
   gsap.set(loader, { top: '0%' });
-  gsap.set(loaderContent, { opacity: 0, y: '1rem', filter: 'blur(10px)' });
+  gsap.set(loaderContent, { opacity: 0, filter: 'blur(10px)' });
   if (container) gsap.set(container, { display: 'none' });
-  
-  // Play Lottie animation after delay
-  if (lottieElement) {
-    // Disable autoplay and clear content
-    lottieElement.setAttribute('data-autoplay', '0');
-    lottieElement.innerHTML = '';
-    
-    // Wait for delay, then reinitialize with autoplay
-    setTimeout(() => {
-      lottieElement.setAttribute('data-autoplay', '1');
-      
-      // Force Webflow to reinitialize
-      if (window.Webflow && window.Webflow.require) {
-        try {
-          window.Webflow.require('lottie').init();
-        } catch (e) {
-          console.log('Webflow lottie reinit failed');
-        }
-      }
-    }, 200);
-  }
   
   // Lock scroll
   window.lenis?.stop();
@@ -2016,9 +1994,11 @@ function initPageLoader() {
   window._loaderTimeline = tl;
   
   if (loaderContent) {
+    // Get initial y value from CSS/Webflow (GSAP will read current transform)
+    const initialY = gsap.getProperty(loaderContent, 'y') || 0;
     tl.to(loaderContent, { opacity: 1, filter: 'blur(0px)', duration: 1, ease: 'power2.out' })
-      .to(loaderContent, { y: 0, duration: 0.7, ease: 'power4.out' }, '<')
-      .to(loaderContent, { opacity: 0, filter: 'blur(10px)', duration: 1, ease: 'power2.out', delay: 1.1})
+      .fromTo(loaderContent, { y: initialY }, { y: 0, duration: 0.7, ease: 'power4.out' }, '<')
+      .to(loaderContent, { opacity: 0, filter: 'blur(10px)', duration: 1, ease: 'power2.out', delay: 1})
   }
   
   tl.to(loader, { top: '-101%', duration: 1, ease: 'power4.inOut' }, '<')
