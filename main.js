@@ -1496,148 +1496,111 @@ function start() {
   else start();
 })();
 
+// Animation timing constants
+const MESSAGE_TIMING = {
+  BLUR_DELAY: 400,
+  WRAPPER_DELAY: 600
+};
+
 /**
  * Initialize message toggle functionality
- * Handles the toggle behavior for the message button and related elements
+ * Simplified version with cleaner event handling
  */
 function initMessageToggle() {
-  // Ensure Webflow is available
+  // Wait for Webflow
   if (!window.Webflow) {
-    console.warn('Webflow not found - waiting...');
     setTimeout(initMessageToggle, 100);
     return;
   }
 
-  const toggleButton = document.querySelector('.nav-button.is--toggle');
-  const overlayWrapper = document.querySelector('.message-overlay_wrapper');
-  const messageBlur = document.querySelector('.floater-message_blur');
-  const messageAvailable = document.querySelector('.floater-message_available');
-  const closeButton = document.querySelector('.floater-message_close');
+  const elements = {
+    toggleButton: document.querySelector('.nav-button.is--toggle'),
+    overlayWrapper: document.querySelector('.message-overlay_wrapper'),
+    messageBlur: document.querySelector('.floater-message_blur'),
+    messageAvailable: document.querySelector('.floater-message_available'),
+    buttonFill: document.querySelector('.nav-button.is--toggle .button-fill.is--toggle')
+  };
 
-  if (!toggleButton || !overlayWrapper || !messageBlur || !messageAvailable || !closeButton) {
+  // Validate required elements
+  if (!Object.values(elements).every(el => el)) {
     console.warn('Message toggle: Required elements not found');
     return;
   }
 
-  // Remove any existing click listeners
-  toggleButton.removeEventListener('click', toggleButton.toggleHandler);
-  
-  // Get the button fill element
-  const buttonFill = toggleButton.querySelector('.button-fill.is--toggle');
-  
-  // Add hover listeners
-  toggleButton.addEventListener('mouseenter', () => {
-    if (buttonFill) buttonFill.classList.add('is--active');
-  });
-  
-  toggleButton.addEventListener('mouseleave', () => {
-    if (buttonFill && !toggleButton.classList.contains('is--active')) {
-      buttonFill.classList.remove('is--active');
-    }
-  });
+  // Clean up existing handlers
+  elements.toggleButton.removeEventListener('click', elements.toggleButton._toggleHandler);
+  document.removeEventListener('click', document._messageClickHandler);
 
-  // Function to manage scroll locking - Pure CSS approach via class + Lenis control
-  const manageScroll = (disable) => {
-    if (disable) {
-      // Stop Lenis smooth scroll
+  // Scroll management
+  const manageScroll = (isOpen) => {
+    if (isOpen) {
       window.lenis?.stop();
-      // Add class to html element for CSS-based scroll lock
       document.documentElement.classList.add('stop-scroll');
     } else {
-      // Remove class from html element
       document.documentElement.classList.remove('stop-scroll');
-      // Restart Lenis smooth scroll
       window.lenis?.start();
     }
   };
 
-  // Create the click handler
-  toggleButton.toggleHandler = () => {
-    // Toggle button state
-    toggleButton.classList.toggle('is--active');
+  // Main toggle handler
+  elements.toggleButton._toggleHandler = () => {
+    const isOpening = !elements.toggleButton.classList.contains('is--active');
     
-    // Update button fill state
-    if (buttonFill) {
-      if (toggleButton.classList.contains('is--active')) {
-        buttonFill.classList.add('is--active');
-      } else {
-        buttonFill.classList.remove('is--active');
-      }
+    // Toggle states
+    elements.toggleButton.classList.toggle('is--active');
+    elements.buttonFill?.classList.toggle('is--active', isOpening);
+    
+    // Show wrapper if opening
+    if (isOpening) {
+      elements.overlayWrapper.style.display = 'block';
+      elements.overlayWrapper.offsetHeight; // Force reflow
     }
     
-    // First make wrapper visible if needed
-    if (!overlayWrapper.classList.contains('is--visible')) {
-      overlayWrapper.style.display = 'block';
-      // Force a reflow to ensure display:block is applied
-      overlayWrapper.offsetHeight;
-    }
+    // Toggle visibility and scroll
+    elements.overlayWrapper.classList.toggle('is--visible');
+    manageScroll(isOpening);
     
-    // Toggle classes for transitions
-    overlayWrapper.classList.toggle('is--visible');
-    
-    // Manage scroll locking - simple and immediate
-    manageScroll(toggleButton.classList.contains('is--active'));
-    
-    if (toggleButton.classList.contains('is--active')) {
-      // Opening - add classes immediately
-      messageBlur.classList.add('is--open');
-      messageAvailable.classList.add('is--open');
+    // Handle animations
+    if (isOpening) {
+      elements.messageBlur.classList.add('is--open');
+      elements.messageAvailable.classList.add('is--open');
     } else {
-      // Closing - delay blur removal, remove available immediately
-      messageAvailable.classList.remove('is--open');
+      elements.messageAvailable.classList.remove('is--open');
       setTimeout(() => {
-        if (!toggleButton.classList.contains('is--active')) {
-          messageBlur.classList.remove('is--open');
+        if (!elements.toggleButton.classList.contains('is--active')) {
+          elements.messageBlur.classList.remove('is--open');
         }
-      }, 400);
+      }, MESSAGE_TIMING.BLUR_DELAY);
       
-      // Hide wrapper after all transitions
       setTimeout(() => {
-        if (!toggleButton.classList.contains('is--active')) {
-          overlayWrapper.style.display = 'none';
+        if (!elements.toggleButton.classList.contains('is--active')) {
+          elements.overlayWrapper.style.display = 'none';
         }
-      }, 600); // Wait for both transitions to complete afte closing
+      }, MESSAGE_TIMING.WRAPPER_DELAY);
     }
   };
 
-  // Add the click listeners
-  toggleButton.addEventListener('click', toggleButton.toggleHandler);
-  
-  // Remove any existing click listeners from the document
-  document.removeEventListener('click', document.messageClickHandler);
-  
-  // Create a new click handler for the document
-  document.messageClickHandler = (e) => {
-    // Only handle clicks when the message is open
-    if (!toggleButton.classList.contains('is--active')) return;
+  // Document click handler for outside clicks
+  document._messageClickHandler = (e) => {
+    if (!elements.toggleButton.classList.contains('is--active')) return;
 
-    // Get the clicked element and check its classes
-    const target = e.target;
-    const clickedElement = target.closest('.floater-message_close, .floater-message_blur, .nav-button.is--toggle, .floater-message_available');
+    const clickedElement = e.target.closest('.floater-message_close, .floater-message_blur, .nav-button.is--toggle, .floater-message_available');
     
     if (!clickedElement) {
-      // Click was outside all relevant elements - close the message
-      toggleButton.click();
-      return;
-    }
-
-    // Handle clicks based on the element that was clicked
-    if (clickedElement.classList.contains('floater-message_close')) {
-      // Close button was clicked
+      elements.toggleButton.click();
+    } else if (clickedElement.classList.contains('floater-message_close')) {
       e.preventDefault();
       e.stopPropagation();
-      toggleButton.click();
+      elements.toggleButton.click();
     } else if (clickedElement.classList.contains('floater-message_blur')) {
-      // Blur background was clicked
-      toggleButton.click();
-    } else if (clickedElement.classList.contains('floater-message_available')) {
-      // Click was inside the message - do nothing
-      return;
+      elements.toggleButton.click();
     }
+    // floater-message_available clicks do nothing (stay open)
   };
 
-  // Add the click handler to the document
-  document.addEventListener('click', document.messageClickHandler);
+  // Add event listeners
+  elements.toggleButton.addEventListener('click', elements.toggleButton._toggleHandler);
+  document.addEventListener('click', document._messageClickHandler);
 }
 
 /**
