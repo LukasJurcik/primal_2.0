@@ -1157,7 +1157,7 @@ function start() {
       }
     }, true); // Capture phase to intercept before Barba
 
-    // Add scroll lock styles for transitions (same approach as message overlay)
+    // Add scroll lock styles for transitions
     if (!document.getElementById('barba-scroll-lock-styles')) {
       const style = document.createElement('style');
       style.id = 'barba-scroll-lock-styles';
