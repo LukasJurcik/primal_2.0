@@ -79,6 +79,7 @@ class VideoManager {
     this.videos = new Map();
     this.observers = new Map();
     this.timers = new Map();
+    this.visibilityHandler = null; // Store visibilitychange handler for cleanup
   }
 
   // Common video setup
@@ -167,8 +168,24 @@ class VideoManager {
     return r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw;
   }
 
+  // Store observer for cleanup
+  addObserver(video, observer) {
+    this.observers.set(video, observer);
+  }
+
   // Simple cleanup
   cleanup() {
+    // Disconnect all observers
+    this.observers.forEach(observer => observer.disconnect());
+    this.observers.clear();
+    
+    // Remove visibilitychange listener if it exists
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
+    }
+    
+    // Clear all timers
     this.timers.forEach(timer => clearTimeout(timer));
     this.timers.clear();
   }
@@ -280,6 +297,8 @@ function initAutoplayVideos() {
       }, { threshold: 0.1 });
       
       io.observe(v);
+      // Store observer for cleanup
+      window.videoManager.addObserver(v, io);
     } else {
       tryPlay();
     }
@@ -385,6 +404,8 @@ function initVideoOnScrollModule() {
 
     // Start observing
     playIO.observe(wrapper);
+    // Store observer for cleanup (using wrapper as key since that's what we observe)
+    window.videoManager.addObserver(wrapper, playIO);
 
     // Handle videos visible on first load
     if (window.videoManager.inViewport(wrapper)) {
@@ -394,24 +415,41 @@ function initVideoOnScrollModule() {
     wrapper.dataset.videoScrollBound = '1';
   });
 
-  // Handle tab visibility changes
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      // Pause all when tab hidden
-      wrappers.forEach(wrapper => {
-        const video = window.videoManager.findVideo(wrapper, '.video-scroll__video');
-        if (video) window.videoManager.pauseVideo(video);
-      });
-    } else {
-      // Resume any video that is in viewport
-      wrappers.forEach(wrapper => {
-        const video = window.videoManager.findVideo(wrapper, '.video-scroll__video');
-        if (video && window.videoManager.inViewport(wrapper)) {
-          playVideo(wrapper, video);
-        }
-      });
-    }
-  });
+  // Handle tab visibility changes (only add once)
+  if (!window.videoManager.visibilityHandler) {
+    window.videoManager.visibilityHandler = () => {
+      const currentWrappers = document.querySelectorAll('[data-video-on-scroll]');
+      if (document.hidden) {
+        // Pause all when tab hidden
+        currentWrappers.forEach(wrapper => {
+          const video = window.videoManager.findVideo(wrapper, '.video-scroll__video');
+          if (video) {
+            window.videoManager.pauseVideo(video);
+            wrapper.dataset.state = 'inactive';
+          }
+        });
+      } else {
+        // Resume any video that is in viewport
+        currentWrappers.forEach(wrapper => {
+          const video = window.videoManager.findVideo(wrapper, '.video-scroll__video');
+          if (video && window.videoManager.inViewport(wrapper)) {
+            if (video.readyState >= 3) {
+              window.videoManager.playVideo(video).then(() => wrapper.dataset.state = 'active')
+                .catch(err => console.warn('Video play blocked:', err));
+            } else {
+              const onCanPlay = () => {
+                video.removeEventListener('canplay', onCanPlay);
+                window.videoManager.playVideo(video).then(() => wrapper.dataset.state = 'active')
+                  .catch(err => console.warn('Video play blocked:', err));
+              };
+              video.addEventListener('canplay', onCanPlay, { once: true });
+            }
+          }
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', window.videoManager.visibilityHandler);
+  }
 }
 window.initVideoOnScrollModule = initVideoOnScrollModule;
 
@@ -432,10 +470,11 @@ window.stopAllVideoOnScroll = stopAllVideoOnScroll;
 
 /**
  * Initialize Lenis smooth scrolling
- * Start in stopped state if stop-scroll class is active (loader or overlay)
+ * autoRaf: false because we use GSAP ticker (via installLenisScrollTriggerBridge)
+ * This prevents double RAF loops and reduces CPU usage
  */
 window.lenis = new window.Lenis({
-  autoRaf: true,
+  autoRaf: false,
   lerp: 0.25,
   smoothWheel: true,
   smoothTouch: true
@@ -1342,8 +1381,15 @@ function start() {
           // Scroll to top (invisible while page is covered) unless hash navigation
           if (!window.barbaNavigationHash) window.scrollTo(0, 0);
           
-          // Set theme INSTANTLY while page is covered (prevents flash)
-          window.setInitialTheme?.();
+          // Kill all ScrollTrigger instances before page transition
+          // They will be recreated on the new page
+          if (window.ScrollTrigger && typeof window.ScrollTrigger.killAll === 'function') {
+            try {
+              window.ScrollTrigger.killAll();
+            } catch (e) {
+              console.warn('ScrollTrigger cleanup error:', e);
+            }
+          }
           
           window.cleanupThemeSwitching?.();
           
@@ -1361,7 +1407,9 @@ function start() {
           }
           
           await ensureSyncHtmlBody(next);
-          window.initThemeSwitching?.(); // Set up scroll observer
+          
+          // Set theme before content becomes visible (prevents flash)
+          window.setInitialTheme?.();
           
           if (next?.container && window.gsap) {
             // Keep container hidden until reveal animation starts
@@ -1414,6 +1462,14 @@ function start() {
             document.querySelector(hash)?.scrollIntoView({ behavior: 'instant', block: 'start' });
             void document.body.offsetHeight;
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            
+            // Update theme based on actual scroll position after hash navigation
+            const trigger = document.querySelector('[light-mode-trigger]');
+            if (trigger) {
+              const rect = trigger.getBoundingClientRect();
+              const isTriggerInViewport = rect.top < window.innerHeight && rect.bottom > 0;
+              applyTheme(isTriggerInViewport);
+            }
           }
           
           window.barbaNavigationHash = null;
@@ -1474,6 +1530,9 @@ function start() {
           await window.reinitializeScripts?.();
 
           try { window.ScrollTrigger.refresh(); } catch (e) {}
+          
+          // Set up theme observer immediately
+          window.initThemeSwitching?.();
           
           // Ensure everything is re-enabled (failsafe)
           document.body.style.overflow = '';
@@ -1787,21 +1846,27 @@ window.Webflow?.push(function() {
 // ============================================
 
 /**
+ * Helper: Set theme classes instantly (no transition animation)
+ */
+function applyTheme(isDark) {
+  const elems = [document.documentElement, document.body];
+  elems.forEach(el => {
+    el.classList.remove('theme-dark', 'theme-light');
+    el.classList.add(isDark ? 'theme-dark' : 'theme-light');
+  });
+}
+
+/**
  * Set initial theme instantly (called early in Barba lifecycle to prevent flash)
  */
 function setInitialTheme() {
   const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
-  
-  // Determine theme based on page and special button flag
   const fromSpecialButton = window.barbaSpecialNavButton || sessionStorage.getItem('specialNavButton') === 'true';
-  const isDark = isHomepage && !fromSpecialButton;
   
-  // Set theme on both html and body using toggle for consistency
-  const elems = [document.documentElement, document.body];
-  elems.forEach(el => {
-    el.classList.toggle('theme-dark', isDark);
-    el.classList.toggle('theme-light', !isDark);
-  });
+  // Determine theme: homepage is dark unless navigating to hash section (light theme)
+  const isDark = isHomepage && !fromSpecialButton && !(window.barbaNavigationHash || window.location.hash);
+  
+  applyTheme(isDark);
   
   // Cleanup flags
   if (fromSpecialButton) {
@@ -1826,44 +1891,35 @@ function initThemeSwitching() {
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
                   window.innerWidth <= 768;
   
-  // Debounce function to prevent rapid theme changes
-  let debounceTimer = null;
-  const debounce = (func, delay) => {
-    return (...args) => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => func(...args), delay);
-    };
-  };
+  // Track current theme state
+  let isDark = document.body.classList.contains('theme-dark');
   
-  // Helper to set theme with smooth transition
+  // Set theme directly for instant response (no debounce)
   const setTheme = (isDark) => {
     const elems = [document.documentElement, document.body];
-    
     elems.forEach(el => {
       el.classList.add('theme-transitioning');
       el.classList.toggle('theme-dark', isDark);
       el.classList.toggle('theme-light', !isDark);
     });
-    
-    // Shorter timeout on mobile for better performance
     setTimeout(() => {
       elems.forEach(el => el.classList.remove('theme-transitioning'));
     }, isMobile ? 200 : 300);
   };
   
-  // Debounced theme setter - longer delay on mobile to prevent flickering
-  const debouncedSetTheme = debounce(setTheme, isMobile ? 150 : 100);
-  
-  // Track current theme state
-  let isDark = document.body.classList.contains('theme-dark');
-  
   // Enable observer only after user scrolls
-  const handleScroll = () => {
-    hasScrolled = true;
-    window.removeEventListener('scroll', handleScroll);
-  };
+  // Clean up any existing scroll listener first
+  if (window._themeScrollHandler) {
+    window.removeEventListener('scroll', window._themeScrollHandler);
+  }
+  
   let hasScrolled = false;
-  window.addEventListener('scroll', handleScroll, { passive: true });
+  window._themeScrollHandler = () => {
+    hasScrolled = true;
+    window.removeEventListener('scroll', window._themeScrollHandler);
+    window._themeScrollHandler = null;
+  };
+  window.addEventListener('scroll', window._themeScrollHandler, { passive: true });
   
   // Watch trigger and switch theme when it enters/leaves viewport
   const observerOptions = isMobile 
@@ -1871,12 +1927,13 @@ function initThemeSwitching() {
     : { threshold: [0, 0.5, 1] };
   
   const observer = new IntersectionObserver(([entry]) => {
+    // Only wait for user scroll to prevent false triggers on initial load
     if (!hasScrolled) return;
     
     const shouldBeDark = entry.isIntersecting;
     if (shouldBeDark !== isDark) {
       isDark = shouldBeDark;
-      debouncedSetTheme(isDark);
+      setTheme(isDark);
     }
   }, observerOptions);
   
@@ -1888,9 +1945,16 @@ function initThemeSwitching() {
 }
 
 function cleanupThemeSwitching() {
+  // Clean up observers
   if (window.themeObservers) {
     window.themeObservers.forEach(o => o.disconnect());
     window.themeObservers = [];
+  }
+  
+  // Clean up scroll listener
+  if (window._themeScrollHandler) {
+    window.removeEventListener('scroll', window._themeScrollHandler);
+    window._themeScrollHandler = null;
   }
 }
 
