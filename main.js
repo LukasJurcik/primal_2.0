@@ -1523,6 +1523,7 @@ function start() {
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
           window.initVideoOnScrollModule?.();
+          window.initScrollToTopButton?.();
           window.initMessageToggle?.();
           window.reinitializePageLibraries?.(); // Reinitialize page-specific libraries
           
@@ -1600,7 +1601,8 @@ function start() {
 
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
-          window.initVideoOnScrollModule?.();
+  window.initVideoOnScrollModule?.();
+  window.initScrollToTopButton?.();
           window.initThemeSwitching?.(); // Initialize theme switching on first load
           window.initializePageLibraries?.(); // Initialize page-specific libraries on first load
           
@@ -1814,9 +1816,54 @@ function closeMessageOverlay() {
 window.initMessageToggle = initMessageToggle;
 window.closeMessageOverlay = closeMessageOverlay;
 
+/**
+ * Initialize scroll-to-top button with smooth easing
+ */
+function initScrollToTopButton() {
+  const button = document.getElementById('scroll-to-top');
+  if (!button) return;
+
+  // Remove existing listener if present
+  if (button._scrollToTopHandler) {
+    button.removeEventListener('click', button._scrollToTopHandler);
+  }
+
+  const handleClick = (event) => {
+    event.preventDefault();
+
+    const gsapEase = window.gsap?.parseEase?.('expo.out');
+    const easing = gsapEase || ((t) => 1 - Math.pow(1 - t, 5)); // easeOutQuint fallback
+
+    if (window.lenis) {
+      window.lenis.scrollTo(0, { duration: 1.2, easing });
+    } else {
+      if (window.gsap?.to) {
+        try {
+          window.gsap.to(window, { 
+            duration: 1.2, 
+            ease: 'expo.out', 
+            scrollTo: { y: 0, autoKill: false } 
+          });
+          return;
+        } catch (error) {
+          // ScrollTo plugin may be missing, fall through to native smooth scroll
+        }
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  button._scrollToTopHandler = handleClick;
+  button.addEventListener('click', handleClick);
+}
+
+window.initScrollToTopButton = initScrollToTopButton;
+
 // Add to Webflow ready event
 window.Webflow?.push(function() {
   initMessageToggle();
+  initScrollToTopButton();
   
   // Preload videos on page load/refresh
   window.preloadVideoOnScroll?.();
