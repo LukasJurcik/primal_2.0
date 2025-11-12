@@ -1930,79 +1930,134 @@ function setInitialTheme() {
 function initThemeSwitching() {
   const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
   if (!isHomepage) return;
-  
+
+  const MOBILE_VISIBLE_RATIO = 0.1;
+  const MOBILE_COOLDOWN = 120;
+  const DESKTOP_COOLDOWN = 100;
+
   const trigger = document.querySelector('[light-mode-trigger]');
   if (!trigger) return;
-  
-  // Detect mobile device for optimized behavior
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
-                  window.innerWidth <= 768;
-  
-  // Track current theme state
+
+  cleanupThemeSwitching();
+
+  const isMobile = window.innerWidth <= 768;
   let isDark = document.body.classList.contains('theme-dark');
-  
-  // Set theme directly for instant response (no debounce)
-  const setTheme = (isDark) => {
-    const elems = [document.documentElement, document.body];
-    elems.forEach(el => {
+  let hasScrolled = false;
+  let lastChange = 0;
+
+  const setThemeInstant = (dark) => {
+    if (dark === isDark) return;
+    isDark = dark;
+    const targets = [document.documentElement, document.body];
+    targets.forEach((el) => {
       el.classList.add('theme-transitioning');
-      el.classList.toggle('theme-dark', isDark);
-      el.classList.toggle('theme-light', !isDark);
+      el.classList.toggle('theme-dark', dark);
+      el.classList.toggle('theme-light', !dark);
     });
     setTimeout(() => {
-      elems.forEach(el => el.classList.remove('theme-transitioning'));
+      targets.forEach((el) => el.classList.remove('theme-transitioning'));
     }, isMobile ? 200 : 300);
   };
-  
-  // Enable observer only after user scrolls
-  // Clean up any existing scroll listener first
-  if (window._themeScrollHandler) {
-    window.removeEventListener('scroll', window._themeScrollHandler);
-  }
-  
-  let hasScrolled = false;
-  window._themeScrollHandler = () => {
-    hasScrolled = true;
-    window.removeEventListener('scroll', window._themeScrollHandler);
-    window._themeScrollHandler = null;
+
+  const cleanupFns = new Set();
+  const registerCleanup = (fn) => {
+    if (typeof fn === 'function') cleanupFns.add(fn);
   };
-  window.addEventListener('scroll', window._themeScrollHandler, { passive: true });
-  
-  // Watch trigger and switch theme when it enters/leaves viewport
-  const observerOptions = isMobile 
-    ? { threshold: 0.5 }
-    : { threshold: [0, 0.5, 1] };
-  
-  const observer = new IntersectionObserver(([entry]) => {
-    // Only wait for user scroll to prevent false triggers on initial load
-    if (!hasScrolled) return;
-    
-    const shouldBeDark = entry.isIntersecting;
-    if (shouldBeDark !== isDark) {
-      isDark = shouldBeDark;
-      setTheme(isDark);
+  window._themeCleanup = () => {
+    cleanupFns.forEach(fn => {
+      try { fn(); } catch (_) { /* ignore */ }
+    });
+    cleanupFns.clear();
+  };
+
+  const handleFirstScroll = () => {
+    hasScrolled = true;
+    window.removeEventListener('scroll', handleFirstScroll);
+  };
+  window.addEventListener('scroll', handleFirstScroll, { passive: true });
+  registerCleanup(() => window.removeEventListener('scroll', handleFirstScroll));
+
+  let rafId = null;
+  const cancelRaf = () => {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
     }
-  }, observerOptions);
-  
-  observer.observe(trigger);
-  
-  // Store for cleanup
-  if (!window.themeObservers) window.themeObservers = [];
-  window.themeObservers.push(observer);
+  };
+  registerCleanup(cancelRaf);
+
+  const measure = () => {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    if (!hasScrolled) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const triggerHeight = rect.height || trigger.offsetHeight || 0;
+
+    if (!viewportHeight || !triggerHeight) {
+      scheduleMeasure(true);
+      return;
+    }
+
+    let nextIsDark = isDark;
+    let cooldown = DESKTOP_COOLDOWN;
+
+    if (isMobile) {
+      const visibleTop = Math.max(rect.top, 0);
+      const visibleBottom = Math.min(rect.bottom, viewportHeight);
+      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+      const ratio = visibleHeight / Math.min(triggerHeight, viewportHeight || triggerHeight || 1);
+      nextIsDark = ratio >= MOBILE_VISIBLE_RATIO;
+      cooldown = MOBILE_COOLDOWN;
+    } else {
+      nextIsDark = rect.bottom > 0 && rect.top < viewportHeight;
+    }
+
+    if (nextIsDark === isDark) return;
+
+    const now = performance.now?.() ?? Date.now();
+    if (now - lastChange < cooldown) return;
+
+    lastChange = now;
+    setThemeInstant(nextIsDark);
+  };
+
+  const scheduleMeasure = (force = false) => {
+    if (!force && rafId !== null) return;
+    if (!force && !hasScrolled) return;
+    cancelRaf();
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      measure();
+    });
+  };
+
+  const handleScroll = () => {
+    hasScrolled = true;
+    scheduleMeasure(false);
+  };
+  const handleTouchEnd = () => scheduleMeasure(false);
+  const handleResize = () => scheduleMeasure(true);
+
+  window.addEventListener('scroll', handleScroll, { passive: true });
+  window.addEventListener('touchend', handleTouchEnd, { passive: true });
+  window.addEventListener('resize', handleResize);
+
+  registerCleanup(() => {
+    window.removeEventListener('scroll', handleScroll);
+    window.removeEventListener('touchend', handleTouchEnd);
+    window.removeEventListener('resize', handleResize);
+  });
+
+  scheduleMeasure(true);
 }
 
 function cleanupThemeSwitching() {
-  // Clean up observers
-  if (window.themeObservers) {
-    window.themeObservers.forEach(o => o.disconnect());
-    window.themeObservers = [];
-  }
-  
-  // Clean up scroll listener
-  if (window._themeScrollHandler) {
-    window.removeEventListener('scroll', window._themeScrollHandler);
-    window._themeScrollHandler = null;
-  }
+  window._themeCleanup?.();
+  window._themeCleanup = null;
 }
 
 // Export functions for Barba hooks to use
