@@ -738,6 +738,7 @@ window.instanceRegistry = {
     // Reset specific script flags
     window.macyInitialized = false;
     window.reelOverlayInitialized = false;
+    window.valuesSliderInitialized = false;
     console.log(`🔄 Reset all script initialization flags`);
   }
 };
