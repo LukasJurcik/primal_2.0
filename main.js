@@ -1463,14 +1463,21 @@ function start() {
             document.querySelector(hash)?.scrollIntoView({ behavior: 'instant', block: 'start' });
             void document.body.offsetHeight;
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-            
-            // Update theme based on actual scroll position after hash navigation
-            const trigger = document.querySelector('[light-mode-trigger]');
-            if (trigger) {
-              const rect = trigger.getBoundingClientRect();
-              const isTriggerInViewport = rect.top < window.innerHeight && rect.bottom > 0;
-              applyTheme(isTriggerInViewport);
-            }
+          }
+          
+          // Evaluate and set theme based on current scroll position BEFORE reveal
+          // This ensures correct theme is set even when browser restores scroll position
+          // Wait for scroll restoration (critical for browser back navigation)
+          // Use multiple RAF + small delay to catch scroll restoration
+          await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+          await new Promise(r => setTimeout(r, 10)); // Small delay for browser scroll restoration
+          await new Promise(r => requestAnimationFrame(r)); // Final RAF to ensure layout is calculated
+          
+          const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
+          if (isHomepage) {
+            // Set theme based on trigger position before reveal
+            const isDark = window.getThemeFromTrigger?.() ?? true;
+            window.applyTheme?.(isDark);
           }
           
           window.barbaNavigationHash = null;
@@ -1600,6 +1607,12 @@ function start() {
             }
           }
 
+          // Ensure homepage starts in dark mode on refresh
+          const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
+          if (isHomepage && !window.location.hash) {
+            window.applyTheme?.(true); // Force dark mode on initial load
+          }
+          
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
   window.initVideoOnScrollModule?.();
@@ -1893,176 +1906,153 @@ window.Webflow?.push(function() {
 // THEME SWITCHING MODULE
 // ============================================
 
+let themeObserver = null;
+
 /**
- * Helper: Set theme classes instantly (no transition animation)
+ * Apply theme classes to html and body
  */
 function applyTheme(isDark) {
-  const elems = [document.documentElement, document.body];
-  elems.forEach(el => {
+  [document.documentElement, document.body].forEach(el => {
     el.classList.remove('theme-dark', 'theme-light');
     el.classList.add(isDark ? 'theme-dark' : 'theme-light');
   });
 }
 
 /**
- * Set initial theme instantly (called early in Barba lifecycle to prevent flash)
+ * Check if trigger is in viewport and return appropriate theme
+ */
+function getThemeFromTrigger() {
+  const trigger = document.querySelector('[light-mode-trigger]');
+  if (!trigger) return true; // Default to dark if no trigger
+  
+  const rect = trigger.getBoundingClientRect();
+  const viewportHeight = window.innerHeight;
+  const isMobile = window.innerWidth <= 768;
+  
+  if (isMobile) {
+    const MOBILE_VISIBLE_RATIO = 0.1;
+    const visibleHeight = Math.max(0, Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0));
+    const ratio = visibleHeight / Math.min(rect.height, viewportHeight);
+    return ratio >= MOBILE_VISIBLE_RATIO;
+  }
+  
+  return rect.bottom > 0 && rect.top < viewportHeight;
+}
+
+/**
+ * Set initial theme before Barba transition
  */
 function setInitialTheme() {
   const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
   const fromSpecialButton = window.barbaSpecialNavButton || sessionStorage.getItem('specialNavButton') === 'true';
+  const hasHash = window.barbaNavigationHash || window.location.hash;
   
-  // Determine theme: homepage is dark unless navigating to hash section (light theme)
-  const isDark = isHomepage && !fromSpecialButton && !(window.barbaNavigationHash || window.location.hash);
-  
-  applyTheme(isDark);
-  
-  // Cleanup flags
   if (fromSpecialButton) {
     window.barbaSpecialNavButton = false;
     sessionStorage.removeItem('specialNavButton');
   }
+  
+  // Default: dark for homepage, light if hash navigation
+  applyTheme(isHomepage && !fromSpecialButton && !hasHash);
 }
 
 /**
- * Theme switching: Sets up scroll-based theme observer on homepage
- * Switches theme when [light-mode-trigger] enters/leaves viewport
- * Optimized for mobile devices to prevent flickering
+ * Initialize theme switching with IntersectionObserver
  */
 function initThemeSwitching() {
   const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
   if (!isHomepage) return;
 
-  const MOBILE_VISIBLE_RATIO = 0.1;
-  const MOBILE_COOLDOWN = 120;
-  const DESKTOP_COOLDOWN = 100;
+  cleanupThemeSwitching();
 
   const trigger = document.querySelector('[light-mode-trigger]');
   if (!trigger) return;
 
-  cleanupThemeSwitching();
-
-  const isMobile = window.innerWidth <= 768;
-  let isDark = document.body.classList.contains('theme-dark');
-  let hasScrolled = false;
   let lastChange = 0;
+  const COOLDOWN = 100;
+  const isMobile = window.innerWidth <= 768;
+  
+  // Track if user has scrolled (prevents overriding initial dark theme on fresh load)
+  const isInitialLoad = (window.scrollY === 0 && window.pageYOffset === 0);
+  let hasScrolled = !isInitialLoad; // If already scrolled, allow theme changes immediately
 
-  const setThemeInstant = (dark) => {
-    if (dark === isDark) return;
-    isDark = dark;
+  const updateTheme = (isDark) => {
+    // On fresh page load, don't change theme until user scrolls
+    // This preserves the dark theme set by inline script
+    if (!hasScrolled) return;
+    
+    // Don't change if already correct (prevents unnecessary updates)
+    const currentIsDark = document.body.classList.contains('theme-dark');
+    if (isDark === currentIsDark) return;
+    
+    const now = performance.now();
+    if (now - lastChange < COOLDOWN) return;
+    lastChange = now;
+    
     const targets = [document.documentElement, document.body];
-    targets.forEach((el) => {
+    targets.forEach(el => {
       el.classList.add('theme-transitioning');
-      el.classList.toggle('theme-dark', dark);
-      el.classList.toggle('theme-light', !dark);
+      el.classList.toggle('theme-dark', isDark);
+      el.classList.toggle('theme-light', !isDark);
     });
+    
     setTimeout(() => {
-      targets.forEach((el) => el.classList.remove('theme-transitioning'));
+      targets.forEach(el => el.classList.remove('theme-transitioning'));
     }, isMobile ? 200 : 300);
   };
-
-  const cleanupFns = new Set();
-  const registerCleanup = (fn) => {
-    if (typeof fn === 'function') cleanupFns.add(fn);
-  };
-  window._themeCleanup = () => {
-    cleanupFns.forEach(fn => {
-      try { fn(); } catch (_) { /* ignore */ }
-    });
-    cleanupFns.clear();
-  };
-
-  const handleFirstScroll = () => {
+  
+  // Enable theme switching after first scroll
+  const enableThemeSwitching = () => {
     hasScrolled = true;
-    window.removeEventListener('scroll', handleFirstScroll);
+    // Now that user has scrolled, do an immediate check
+    const isDark = getThemeFromTrigger();
+    updateTheme(isDark);
   };
-  window.addEventListener('scroll', handleFirstScroll, { passive: true });
-  registerCleanup(() => window.removeEventListener('scroll', handleFirstScroll));
+  
+  // Store handlers for cleanup
+  let scrollHandler = null;
+  let touchHandler = null;
+  
+  // Listen for first scroll
+  if (!hasScrolled) {
+    scrollHandler = enableThemeSwitching;
+    touchHandler = enableThemeSwitching;
+    window.addEventListener('scroll', scrollHandler, { once: true, passive: true });
+    window.addEventListener('touchstart', touchHandler, { once: true, passive: true });
+  }
 
-  let rafId = null;
-  const cancelRaf = () => {
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
+  // Use IntersectionObserver for efficient viewport detection
+  const threshold = isMobile ? 0.1 : 0;
+  themeObserver = new IntersectionObserver((entries) => {
+    const entry = entries[0];
+    if (entry) {
+      // Dark theme when trigger is intersecting (visible)
+      updateTheme(entry.isIntersecting);
     }
-  };
-  registerCleanup(cancelRaf);
+  }, { threshold });
 
-  const measure = () => {
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-    if (!hasScrolled) return;
-
-    const rect = trigger.getBoundingClientRect();
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    const triggerHeight = rect.height || trigger.offsetHeight || 0;
-
-    if (!viewportHeight || !triggerHeight) {
-      scheduleMeasure(true);
-      return;
-    }
-
-    let nextIsDark = isDark;
-    let cooldown = DESKTOP_COOLDOWN;
-
-    if (isMobile) {
-      const visibleTop = Math.max(rect.top, 0);
-      const visibleBottom = Math.min(rect.bottom, viewportHeight);
-      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
-      const ratio = visibleHeight / Math.min(triggerHeight, viewportHeight || triggerHeight || 1);
-      nextIsDark = ratio >= MOBILE_VISIBLE_RATIO;
-      cooldown = MOBILE_COOLDOWN;
-    } else {
-      nextIsDark = rect.bottom > 0 && rect.top < viewportHeight;
-    }
-
-    if (nextIsDark === isDark) return;
-
-    const now = performance.now?.() ?? Date.now();
-    if (now - lastChange < cooldown) return;
-
-    lastChange = now;
-    setThemeInstant(nextIsDark);
-  };
-
-  const scheduleMeasure = (force = false) => {
-    if (!force && rafId !== null) return;
-    if (!force && !hasScrolled) return;
-    cancelRaf();
-    rafId = requestAnimationFrame(() => {
-      rafId = null;
-      measure();
-    });
-  };
-
-  const handleScroll = () => {
-    hasScrolled = true;
-    scheduleMeasure(false);
-  };
-  const handleTouchEnd = () => scheduleMeasure(false);
-  const handleResize = () => scheduleMeasure(true);
-
-  window.addEventListener('scroll', handleScroll, { passive: true });
-  window.addEventListener('touchend', handleTouchEnd, { passive: true });
-  window.addEventListener('resize', handleResize);
-
-  registerCleanup(() => {
-    window.removeEventListener('scroll', handleScroll);
-    window.removeEventListener('touchend', handleTouchEnd);
-    window.removeEventListener('resize', handleResize);
-  });
-
-  scheduleMeasure(true);
+  themeObserver.observe(trigger);
+  
+  // Initial check only if page is already scrolled (browser back navigation)
+  if (hasScrolled) {
+    setTimeout(() => {
+      const isDark = getThemeFromTrigger();
+      updateTheme(isDark);
+    }, 50);
+  }
 }
 
 function cleanupThemeSwitching() {
-  window._themeCleanup?.();
-  window._themeCleanup = null;
+  if (themeObserver) {
+    themeObserver.disconnect();
+    themeObserver = null;
+  }
 }
 
-// Export functions for Barba hooks to use
+// Export functions for Barba hooks
 window.setInitialTheme = setInitialTheme;
+window.getThemeFromTrigger = getThemeFromTrigger;
+window.applyTheme = applyTheme;
 window.initThemeSwitching = initThemeSwitching;
 window.cleanupThemeSwitching = cleanupThemeSwitching;
 
