@@ -739,6 +739,7 @@ window.instanceRegistry = {
     window.macyInitialized = false;
     window.reelOverlayInitialized = false;
     window.valuesSliderInitialized = false;
+    window.fontWeightAnimationInitialized = false;
     console.log(`🔄 Reset all script initialization flags`);
   }
 };
@@ -1907,6 +1908,7 @@ window.Webflow?.push(function() {
 // ============================================
 
 let themeObserver = null;
+let themeScrollHandlers = { scroll: null, touch: null };
 
 /**
  * Apply theme classes to html and body
@@ -1960,10 +1962,11 @@ function setInitialTheme() {
  * Initialize theme switching with IntersectionObserver
  */
 function initThemeSwitching() {
+  // Always cleanup first (important when navigating from homepage to other pages)
+  cleanupThemeSwitching();
+  
   const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
   if (!isHomepage) return;
-
-  cleanupThemeSwitching();
 
   const trigger = document.querySelector('[light-mode-trigger]');
   if (!trigger) return;
@@ -1977,6 +1980,11 @@ function initThemeSwitching() {
   let hasScrolled = !isInitialLoad; // If already scrolled, allow theme changes immediately
 
   const updateTheme = (isDark) => {
+    // CRITICAL: Only allow theme changes on homepage
+    // This prevents theme switching on other pages
+    const isHomepage = window.location.pathname === '/' || window.location.pathname === '/index';
+    if (!isHomepage) return;
+    
     // On fresh page load, don't change theme until user scrolls
     // This preserves the dark theme set by inline script
     if (!hasScrolled) return;
@@ -2010,13 +2018,13 @@ function initThemeSwitching() {
   };
   
   // Store handlers for cleanup
-  let scrollHandler = null;
-  let touchHandler = null;
+  const scrollHandler = enableThemeSwitching;
+  const touchHandler = enableThemeSwitching;
+  themeScrollHandlers.scroll = scrollHandler;
+  themeScrollHandlers.touch = touchHandler;
   
   // Listen for first scroll
   if (!hasScrolled) {
-    scrollHandler = enableThemeSwitching;
-    touchHandler = enableThemeSwitching;
     window.addEventListener('scroll', scrollHandler, { once: true, passive: true });
     window.addEventListener('touchstart', touchHandler, { once: true, passive: true });
   }
@@ -2043,9 +2051,20 @@ function initThemeSwitching() {
 }
 
 function cleanupThemeSwitching() {
+  // Disconnect IntersectionObserver
   if (themeObserver) {
     themeObserver.disconnect();
     themeObserver = null;
+  }
+  
+  // Remove scroll handlers if they exist
+  if (themeScrollHandlers.scroll) {
+    window.removeEventListener('scroll', themeScrollHandlers.scroll);
+    themeScrollHandlers.scroll = null;
+  }
+  if (themeScrollHandlers.touch) {
+    window.removeEventListener('touchstart', themeScrollHandlers.touch);
+    themeScrollHandlers.touch = null;
   }
 }
 
