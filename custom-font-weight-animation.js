@@ -5,10 +5,15 @@
   
   // Check if device supports hover (not touch devices)
   const supportsHover = window.matchMedia('(hover: hover)').matches;
-  if (!supportsHover) return;
   
-  if (typeof window.$ === 'undefined' || typeof window.gsap === 'undefined' || typeof window.SplitType === 'undefined') {
+  if (typeof window.$ === 'undefined' || typeof window.SplitType === 'undefined') {
     console.warn('⚠️ Font Weight Animation: Missing dependencies');
+    return;
+  }
+  
+  // Check for GSAP only if hover is supported (needed for animations)
+  if (supportsHover && typeof window.gsap === 'undefined') {
+    console.warn('⚠️ Font Weight Animation: Missing GSAP dependency');
     return;
   }
   
@@ -16,6 +21,7 @@
   const maxDistance = 350;
   const maxExpo = -80;
   const minExpo = -20;
+  const mobileExpo = -30; // Static weight for mobile devices
   let mouseX = 0;
   let mouseY = 0;
   
@@ -39,43 +45,52 @@
       }
       
       $(splitChars).each((i, char) => {
-        const initialExpo = parseFloat(getComputedStyle(char).getPropertyValue('--expo')) || 0;
-        $(char).data('initialExpo', initialExpo);
-        $(char).css('--expo', initialExpo);
-        
-        $(char).on('mouseenter.fontWeight', () => {
-          gsap.to(char, { duration: 0.5, css: { '--expo': maxExpo } });
-        });
-        
-        $(char).on('mouseleave.fontWeight', () => {
-          gsap.to(char, { duration: 0.5, css: { '--expo': $(char).data('initialExpo') } });
-        });
-      });
-    });
-    
-    function updateExpo() {
-      $('[data-animate="font-weight"] .char').each((index, item) => {
-        const $item = $(item);
-        const pos = $item.offset();
-        const cx = pos.left + $item.outerWidth() / 2;
-        const cy = pos.top + $item.outerHeight() / 2;
-        const dist = Math.hypot(mouseX - cx, mouseY - cy);
-        
-        let expo = minExpo;
-        if (dist < maxDistance) {
-          expo = minExpo + (maxExpo - minExpo) * ((maxDistance - dist) / maxDistance);
+        if (supportsHover) {
+          // Desktop: Initialize with CSS value or default, then add hover interactions
+          const initialExpo = parseFloat(getComputedStyle(char).getPropertyValue('--expo')) || 0;
+          $(char).data('initialExpo', initialExpo);
+          $(char).css('--expo', initialExpo);
+          
+          $(char).on('mouseenter.fontWeight', () => {
+            gsap.to(char, { duration: 0.5, css: { '--expo': maxExpo } });
+          });
+          
+          $(char).on('mouseleave.fontWeight', () => {
+            gsap.to(char, { duration: 0.5, css: { '--expo': $(char).data('initialExpo') } });
+          });
+        } else {
+          // Mobile: Set static weight to -30
+          $(char).css('--expo', mobileExpo);
         }
-        gsap.to(item, { duration: 0.5, css: { '--expo': expo } });
       });
-    }
-    
-    $(document).on('mousemove.fontWeight', (e) => {
-      mouseX = e.pageX;
-      mouseY = e.pageY;
-      updateExpo();
     });
     
-    $(window).on('scroll.fontWeight resize.fontWeight', updateExpo);
+    // Only set up mouse tracking and animations on hover-supported devices
+    if (supportsHover) {
+      function updateExpo() {
+        $('[data-animate="font-weight"] .char').each((index, item) => {
+          const $item = $(item);
+          const pos = $item.offset();
+          const cx = pos.left + $item.outerWidth() / 2;
+          const cy = pos.top + $item.outerHeight() / 2;
+          const dist = Math.hypot(mouseX - cx, mouseY - cy);
+          
+          let expo = minExpo;
+          if (dist < maxDistance) {
+            expo = minExpo + (maxExpo - minExpo) * ((maxDistance - dist) / maxDistance);
+          }
+          gsap.to(item, { duration: 0.5, css: { '--expo': expo } });
+        });
+      }
+      
+      $(document).on('mousemove.fontWeight', (e) => {
+        mouseX = e.pageX;
+        mouseY = e.pageY;
+        updateExpo();
+      });
+      
+      $(window).on('scroll.fontWeight resize.fontWeight', updateExpo);
+    }
   }
   
   // 3. Cleanup function
