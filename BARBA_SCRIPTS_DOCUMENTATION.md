@@ -95,12 +95,6 @@ window.myNewScriptInitialized = false; // Add your new flag here
 - **Functionality**: Responsive masonry grid layout
 - **Triggers**: `[macy-grid="true"]`
 
-### 3. Font Weight Animation (`custom-font-weight-animation.js`)
-- **Flag**: `window.fontWeightAnimationInitialized`
-- **Functionality**: Interactive text animation based on mouse proximity and hover
-- **Triggers**: `[data-animate="font-weight"]`
-- **Dependencies**: jQuery, GSAP, SplitType
-
 ## System Components
 
 ### Instance Registry
@@ -180,7 +174,6 @@ project/
 ├── main.js                          # Core system and Barba.js setup
 ├── custom-reel-overlay.js           # Reel overlay functionality
 ├── custom-masonry.js                # Masonry grid functionality
-├── custom-font-weight-animation.js  # Font weight animation functionality
 └── BARBA_SCRIPTS_DOCUMENTATION.md   # This documentation
 ```
 
