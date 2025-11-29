@@ -3,8 +3,8 @@
 (function() {
   var selector = '[macy-grid="true"]';
   var columns = 4;
-  var margin = 8; // Fallback
-  var cssGapVariable = '--_responsive-sizes---grid-gap';
+  var margin = 24; // Fallback
+  var cssGapVariable = '--_responsive-sizes---container-padding';
   
   // Automatic initialization guard - no manual setup needed
   if (window.macyInitialized) {
@@ -15,13 +15,33 @@
     var el = document.querySelector(selector);
     if (!el) return margin;
     
-    var value = getComputedStyle(el).getPropertyValue(variableName).trim();
-    var numericValue = parseFloat(value);
+    // Try to get the variable from element or root
+    var rawValue = getComputedStyle(el).getPropertyValue(variableName).trim() || 
+                   getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
     
-    if (isNaN(numericValue)) return margin;
+    if (!rawValue) return margin;
     
-    var rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    return numericValue * rootFontSize;
+    // If value contains CSS functions, compute it via temporary element
+    if (rawValue.includes('clamp(') || rawValue.includes('calc(')) {
+      var tempEl = document.createElement('div');
+      tempEl.style.position = 'absolute';
+      tempEl.style.visibility = 'hidden';
+      tempEl.style.paddingLeft = 'var(' + variableName + ')';
+      document.body.appendChild(tempEl);
+      
+      var computed = parseFloat(getComputedStyle(tempEl).paddingLeft);
+      document.body.removeChild(tempEl);
+      
+      return (!isNaN(computed) && computed > 0) ? computed : margin;
+    }
+    
+    // Handle simple pixel values
+    if (rawValue.includes('px')) {
+      var num = parseFloat(rawValue);
+      return (!isNaN(num)) ? num : margin;
+    }
+    
+    return margin;
   }
   
   function getCurrentSpacing() {
@@ -69,36 +89,41 @@
     window.macyInitialized = true;
   }
   
-  // Wait for page to be fully painted
+  // Wait for page to be ready
   function waitForPaint() {
     requestAnimationFrame(function() {
       requestAnimationFrame(function() {
-        init();
+        setTimeout(init, 50);
       });
     });
   }
   
-  waitForPaint();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', waitForPaint);
+  } else {
+    waitForPaint();
+  }
   
   // Resize handler
   window.addEventListener('resize', function() {
-    if (window.macyInstance) {
-      var currentSpacing = getCurrentSpacing();
-      window.macyInstance.options.margin = { x: currentSpacing, y: currentSpacing };
-      
-      if (window.macyInstance.options.breakAt) {
-        for (var breakpoint in window.macyInstance.options.breakAt) {
-          window.macyInstance.options.breakAt[breakpoint].margin = { 
-            x: currentSpacing, 
-            y: currentSpacing 
-          };
-        }
-      }
-      
-      window.macyInstance.recalculate(true, true);
-    } else {
+    if (!window.macyInstance) {
       init();
+      return;
     }
+    
+    var currentSpacing = getCurrentSpacing();
+    window.macyInstance.options.margin = { x: currentSpacing, y: currentSpacing };
+    
+    if (window.macyInstance.options.breakAt) {
+      for (var breakpoint in window.macyInstance.options.breakAt) {
+        window.macyInstance.options.breakAt[breakpoint].margin = { 
+          x: currentSpacing, 
+          y: currentSpacing 
+        };
+      }
+    }
+    
+    window.macyInstance.recalculate(true, true);
   });
 })();
 </script>
