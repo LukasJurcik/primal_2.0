@@ -33,8 +33,18 @@ function installLenisScrollTriggerBridge() {
   if (installLenisScrollTriggerBridge._done) return;
   installLenisScrollTriggerBridge._done = true;
 
+  let connectRetries = 0;
+  const MAX_CONNECT_RETRIES = 100; // 5 seconds at 50ms intervals
+  
   const connect = () => {
-    if (!window.lenis) { setTimeout(connect, 50); return; }
+    if (!window.lenis) {
+      if (++connectRetries > MAX_CONNECT_RETRIES) {
+        console.error('❌ Lenis failed to load after 5 seconds. Scroll bridge disabled.');
+        return;
+      }
+      setTimeout(connect, 50);
+      return;
+    }
 
     window.gsap.registerPlugin(window.ScrollTrigger);
 
@@ -946,6 +956,7 @@ window.removeCustomCSS = removeCustomCSS;
   let pendingNavigation = null;
   let barbaInitialized = false;
   let startCalled = false; // Prevent multiple start() calls
+  let barbaClickHandler = null; // Store click handler for cleanup
 
   // Easing configuration - change these to update all animations
   const COVER_EASE = 'power4.inOut';  // Easing for exit/cover animations
@@ -1170,9 +1181,19 @@ window.removeCustomCSS = removeCustomCSS;
   /**
    * Initialize Barba.js with page transition configuration
    */
+  let startRetries = 0;
+  const MAX_START_RETRIES = 100; // 5 seconds at 50ms intervals
+  
 function start() {
   if (startCalled) return;
-  if (!window.barba || !window.gsap) return setTimeout(start, 50);
+  
+  if (!window.barba || !window.gsap) {
+    if (++startRetries > MAX_START_RETRIES) {
+      console.error('❌ Barba/GSAP failed to load after 5 seconds. Page transitions disabled.');
+      return;
+    }
+    return setTimeout(start, 50);
+  }
   
   startCalled = true;
   // Initialize Barba.js page transitions
@@ -1225,9 +1246,14 @@ function start() {
 
     try { window.barba.destroy(); } catch (e) {}
     
+    // Remove existing click handler if present (defensive cleanup)
+    if (barbaClickHandler) {
+      document.removeEventListener('click', barbaClickHandler, true);
+    }
+    
     // Manually intercept clicks and trigger Barba
     // Prevents clicks during transitions to avoid interruption
-    document.addEventListener('click', (e) => {
+    barbaClickHandler = (e) => {
       const link = e.target.closest('a[href]');
       if (!link) return;
       
@@ -1295,7 +1321,9 @@ function start() {
           window.location.href = link.href;
         }
       }
-    }, true);
+    };
+    
+    document.addEventListener('click', barbaClickHandler, true);
 
     window.barba.init({
       links: 'a[href]:not([target="_blank"])',
@@ -1619,8 +1647,8 @@ function start() {
           
           window.initVideoHoverModule?.();
           window.initAutoplayVideos?.();
-  window.initVideoOnScrollModule?.();
-  window.initScrollToTopButton?.();
+          window.initVideoOnScrollModule?.();
+          window.initScrollToTopButton?.();
           window.initThemeSwitching?.(); // Initialize theme switching on first load
           window.initializePageLibraries?.(); // Initialize page-specific libraries on first load
           
@@ -1723,9 +1751,16 @@ const MESSAGE_TIMING = {
  * Initialize message toggle functionality
  * Simplified version with cleaner event handling
  */
+let messageToggleRetries = 0;
+const MAX_MESSAGE_TOGGLE_RETRIES = 50; // 5 seconds at 100ms intervals
+
 function initMessageToggle() {
   // Wait for Webflow
   if (!window.Webflow) {
+    if (++messageToggleRetries > MAX_MESSAGE_TOGGLE_RETRIES) {
+      console.error('❌ Webflow failed to load after 5 seconds. Message toggle disabled.');
+      return;
+    }
     setTimeout(initMessageToggle, 100);
     return;
   }
