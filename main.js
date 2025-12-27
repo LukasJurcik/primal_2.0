@@ -894,14 +894,18 @@ window.removeCustomCSS = removeCustomCSS;
   ];
 
   /**
-   * Re-initialize Webflow runtime for click/hover interactions
+   * Re-initialize Webflow interactions after Barba.js page transitions
    */
   function reinitIXStable() {
     try {
       window.Webflow?.destroy();
-      window.Webflow?.ready?.();
-      window.Webflow?.require?.('ix2').init();
-      setTimeout(() => { try { window.Webflow?.require('ix2').init(); } catch (e) {} }, 0);
+      window.Webflow?.ready();
+      window.Webflow?.require?.('ix2')?.init?.();
+      
+      document.dispatchEvent(new Event('readystatechange'));
+      window.dispatchEvent(new Event('load'));
+      
+      setTimeout(() => window.ScrollTrigger?.refresh?.(true), 100);
     } catch (e) {
       console.error('Webflow reinit error:', e);
     }
@@ -909,30 +913,26 @@ window.removeCustomCSS = removeCustomCSS;
 
   /**
    * Sync HTML and body attributes from next page
-   * Pulls data-wf-page and body class from HTML string
-   * @param {string} nextHTMLString - HTML content of next page
    */
   function syncHtmlAndBodyFromHTML(nextHTMLString) {
     if (!nextHTMLString) return;
-    const htmlTag = nextHTMLString.match(/<html[^>]*>/i)?.[0];
-    const wfPage = htmlTag && htmlTag.match(/data-wf-page="([^"]+)"/i)?.[1];
+    
+    const wfPage = nextHTMLString.match(/data-wf-page="([^"]+)"/i)?.[1];
     if (wfPage) document.documentElement.setAttribute('data-wf-page', wfPage);
     
     const bodyClass = nextHTMLString.match(/<body[^>]*class="([^"]*)"/i)?.[1];
-    if (typeof bodyClass === 'string') {
-      document.body.className = bodyClass;
-    }
+    if (typeof bodyClass === 'string') document.body.className = bodyClass;
   }
 
   /**
    * Ensure HTML and body are synced from next page
-   * Fetches HTML if not already available
-   * @param {Object} next - Next page object from Barba
    */
   async function ensureSyncHtmlBody(next) {
     let html = next?.html;
-    if (!html && next?.url?.href) {
-      try { html = await fetch(next.url.href, { credentials: 'include' }).then(r => r.text()); } catch (e) {}
+    if (!html || !html.includes('<html')) {
+      try {
+        html = await fetch(next?.url?.href || window.location.href, { credentials: 'include' }).then(r => r.text());
+      } catch (e) {}
     }
     syncHtmlAndBodyFromHTML(html);
   }
@@ -1451,6 +1451,9 @@ function start() {
             window.executeCustomScripts?.('init');
           }
           
+          // Initialize Webflow IX2 BEFORE reveal animation (prevents layout shift)
+          reinitIXStable();
+          
           // Run widow fix before content is revealed to prevent flash
           window.runWidowFix?.();
         },
@@ -1503,7 +1506,7 @@ function start() {
         },
 
         async after({ next }) {
-          reinitIXStable();
+          // IX2 is already initialized in beforeEnter, just ensure bridge is set up
           installLenisScrollTriggerBridge();
 
           // Clear any lingering transforms on both wrapper and container that break position: fixed
