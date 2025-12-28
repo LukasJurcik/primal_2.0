@@ -1649,6 +1649,7 @@ function start() {
           window.initAutoplayVideos?.();
           window.initVideoOnScrollModule?.();
           window.initScrollToTopButton?.();
+          window.initMessageToggle?.(); // Initialize message toggle on first load
           window.initThemeSwitching?.(); // Initialize theme switching on first load
           window.initializePageLibraries?.(); // Initialize page-specific libraries on first load
           
