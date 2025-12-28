@@ -1,0 +1,12 @@
+{
+  "name": "primal-scripts",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "terser main.js -o main.min.js -c drop_console=true -m",
+    "watch": "nodemon --watch main.js --exec 'npm run build'"
+  },
+  "devDependencies": {
+    "terser": "^5.44.1"
+  }
+}
+
