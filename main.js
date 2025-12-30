@@ -207,7 +207,6 @@ window.videoManager = new VideoManager();
 // ============================================
 // VIDEO HOVER MODULE
 // ============================================
-// Copy this section for hover video functionality
 
 /**
  * Initialize video hover functionality
@@ -219,40 +218,40 @@ window.videoManager = new VideoManager();
  * </div>
  */
 function initVideoHoverModule() {
-  console.log('🎥 Initializing video hover functionality...');
-  const wrappers = document.querySelectorAll('[data-video-on-hover]');
-  wrappers.forEach((wrapper) => {
+  document.querySelectorAll('[data-video-on-hover]').forEach(wrapper => {
     if (wrapper.dataset.videoHoverBound === '1') return;
 
-    const video = window.videoManager.findVideo(wrapper, '.video-card-hover__video');
-    const src = window.videoManager.getVideoSrc(wrapper, video);
+    const video = wrapper.querySelector('.video-card-hover__video') || wrapper.querySelector('video');
+    const src = video?.dataset.videoSrc || wrapper.dataset.videoSrc;
     if (!video || !src) return;
 
-    window.videoManager.setupVideo(video);
+    // Setup
+    video.muted = true;
+    video.playsInline = true;
+    wrapper.querySelectorAll('*').forEach(el => el.style.pointerEvents = 'none');
 
-    const timerKey = `hover-${Math.random()}`;
+    let unloadTimer = null;
 
-    const onEnter = () => {
-      window.videoManager.clearTimer(timerKey);
-      if (!video.getAttribute('src')) video.setAttribute('src', src);
-      window.videoManager.resetVideoTime(video);
-      window.videoManager.playVideo(video);
+    const play = () => {
+      clearTimeout(unloadTimer);
+      if (!video.src) video.src = src;
+      video.play().catch(() => {});
       wrapper.dataset.videoOnHover = 'active';
     };
 
-    const onLeave = () => {
-      window.videoManager.pauseVideo(video);
+    const stop = () => {
+      video.pause();
       wrapper.dataset.videoOnHover = 'not-active';
-      window.videoManager.setTimer(timerKey, () => {
-        window.videoManager.unloadVideo(video);
+      unloadTimer = setTimeout(() => {
+        video.removeAttribute('src');
+        try { video.load(); } catch (e) {}
       }, 250);
     };
-    
-    wrapper.addEventListener('mouseenter', onEnter);
-    wrapper.addEventListener('mouseleave', onLeave);
-    wrapper.addEventListener('touchstart', onEnter, { passive: true });
-    wrapper.addEventListener('touchend', onLeave);
 
+    wrapper.addEventListener('mouseenter', play);
+    wrapper.addEventListener('mouseleave', stop);
+    wrapper.addEventListener('touchstart', play, { passive: true });
+    wrapper.addEventListener('touchend', stop);
     wrapper.dataset.videoHoverBound = '1';
   });
 }
